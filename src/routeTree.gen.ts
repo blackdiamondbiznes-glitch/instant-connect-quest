@@ -10,33 +10,162 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as DemoRouteImport } from './routes/demo'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as CabinetTokenRouteImport } from './routes/cabinet.$token'
+import { Route as ApiPublicHooksTickRouteImport } from './routes/api/public/hooks/tick'
+import { Route as ApiPublicPayClickRouteImport } from './routes/api/public/pay/click'
+import { Route as ApiPublicTelegramWebhookRouteImport } from './routes/api/public/telegram/webhook'
+import { Route as ApiPublicPayPaymeOwnerRouteImport } from './routes/api/public/pay/payme.$owner'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DemoRoute = DemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const CabinetTokenRoute = CabinetTokenRouteImport.update({
+  id: '/cabinet/$token',
+  path: '/cabinet/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicHooksTickRoute = ApiPublicHooksTickRouteImport.update({
+  id: '/api/public/hooks/tick',
+  path: '/api/public/hooks/tick',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicPayClickRoute = ApiPublicPayClickRouteImport.update({
+  id: '/api/public/pay/click',
+  path: '/api/public/pay/click',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicTelegramWebhookRoute =
+  ApiPublicTelegramWebhookRouteImport.update({
+    id: '/api/public/telegram/webhook',
+    path: '/api/public/telegram/webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicPayPaymeOwnerRoute = ApiPublicPayPaymeOwnerRouteImport.update({
+  id: '/api/public/pay/payme/$owner',
+  path: '/api/public/pay/payme/$owner',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/demo': typeof DemoRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/cabinet/$token': typeof CabinetTokenRoute
+  '/api/public/hooks/tick': typeof ApiPublicHooksTickRoute
+  '/api/public/pay/click': typeof ApiPublicPayClickRoute
+  '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
+  '/api/public/pay/payme/$owner': typeof ApiPublicPayPaymeOwnerRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/demo': typeof DemoRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/cabinet/$token': typeof CabinetTokenRoute
+  '/api/public/hooks/tick': typeof ApiPublicHooksTickRoute
+  '/api/public/pay/click': typeof ApiPublicPayClickRoute
+  '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
+  '/api/public/pay/payme/$owner': typeof ApiPublicPayPaymeOwnerRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/demo': typeof DemoRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/cabinet/$token': typeof CabinetTokenRoute
+  '/api/public/hooks/tick': typeof ApiPublicHooksTickRoute
+  '/api/public/pay/click': typeof ApiPublicPayClickRoute
+  '/api/public/telegram/webhook': typeof ApiPublicTelegramWebhookRoute
+  '/api/public/pay/payme/$owner': typeof ApiPublicPayPaymeOwnerRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/demo'
+    | '/sitemap.xml'
+    | '/admin'
+    | '/cabinet/$token'
+    | '/api/public/hooks/tick'
+    | '/api/public/pay/click'
+    | '/api/public/telegram/webhook'
+    | '/api/public/pay/payme/$owner'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/auth'
+    | '/demo'
+    | '/sitemap.xml'
+    | '/admin'
+    | '/cabinet/$token'
+    | '/api/public/hooks/tick'
+    | '/api/public/pay/click'
+    | '/api/public/telegram/webhook'
+    | '/api/public/pay/payme/$owner'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/demo'
+    | '/sitemap.xml'
+    | '/_authenticated/admin'
+    | '/cabinet/$token'
+    | '/api/public/hooks/tick'
+    | '/api/public/pay/click'
+    | '/api/public/telegram/webhook'
+    | '/api/public/pay/payme/$owner'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
+  DemoRoute: typeof DemoRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  CabinetTokenRoute: typeof CabinetTokenRoute
+  ApiPublicHooksTickRoute: typeof ApiPublicHooksTickRoute
+  ApiPublicPayClickRoute: typeof ApiPublicPayClickRoute
+  ApiPublicTelegramWebhookRoute: typeof ApiPublicTelegramWebhookRoute
+  ApiPublicPayPaymeOwnerRoute: typeof ApiPublicPayPaymeOwnerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +177,101 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/demo': {
+      id: '/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof DemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/cabinet/$token': {
+      id: '/cabinet/$token'
+      path: '/cabinet/$token'
+      fullPath: '/cabinet/$token'
+      preLoaderRoute: typeof CabinetTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/tick': {
+      id: '/api/public/hooks/tick'
+      path: '/api/public/hooks/tick'
+      fullPath: '/api/public/hooks/tick'
+      preLoaderRoute: typeof ApiPublicHooksTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/pay/click': {
+      id: '/api/public/pay/click'
+      path: '/api/public/pay/click'
+      fullPath: '/api/public/pay/click'
+      preLoaderRoute: typeof ApiPublicPayClickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/telegram/webhook': {
+      id: '/api/public/telegram/webhook'
+      path: '/api/public/telegram/webhook'
+      fullPath: '/api/public/telegram/webhook'
+      preLoaderRoute: typeof ApiPublicTelegramWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/pay/payme/$owner': {
+      id: '/api/public/pay/payme/$owner'
+      path: '/api/public/pay/payme/$owner'
+      fullPath: '/api/public/pay/payme/$owner'
+      preLoaderRoute: typeof ApiPublicPayPaymeOwnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
+  DemoRoute: DemoRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
+  CabinetTokenRoute: CabinetTokenRoute,
+  ApiPublicHooksTickRoute: ApiPublicHooksTickRoute,
+  ApiPublicPayClickRoute: ApiPublicPayClickRoute,
+  ApiPublicTelegramWebhookRoute: ApiPublicTelegramWebhookRoute,
+  ApiPublicPayPaymeOwnerRoute: ApiPublicPayPaymeOwnerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
