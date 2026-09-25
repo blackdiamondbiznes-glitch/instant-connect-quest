@@ -159,3 +159,45 @@ export function paymentLinks(o: { id: string; amount: number }, s: { click_servi
   }
   return out;
 }
+
+const ORDER_RE = /\b(olaman|olmoqchiman|buyurtma|zakaz|заказ\w*|беру|куплю|хочу купить|оформить|i('| )?ll take|want to buy|order)\b/i;
+
+/** Detects an order in a group message (regex prefilter + small AI model). Creates an order record. */
+export async function detectGroupOrder(p: { ownerId: number; chatId: number; messageId: number; fromName: string | null; text: string; lang: string }) {
+  if (!ORDER_RE.test(p.text)) return;
+  const key = process.env["LOVABLE_API_KEY"];
+  if (!key) return;
+  const { data: products } = await supabaseAdmin.from("records").select("title,amount").eq("owner_id", p.ownerId).eq("data_type", "stock").limit(50);
+  const catalog = (products ?? []).map((x) => `${x.title} — ${Number(x.amount)}`).join("\n") || "(no catalog)";
+  let out: { is_order?: boolean; product?: string; quantity?: number; amount?: number } = {};
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-3.1-flash-lite",
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: `Decide if a Telegram group message is a customer placing a purchase order. Shop catalog:\n${catalog}\nReturn JSON {"is_order":boolean,"product":string,"quantity":number,"amount":number} where amount = unit price * quantity from the catalog, or 0 if unknown. Questions about price are NOT orders.` },
+          { role: "user", content: p.text.slice(0, 600) },
+        ],
+      }),
+    });
+    if (!res.ok) { console.error(`order AI failed [${res.status}]: ${await res.text()}`); return; }
+    const j = await res.json();
+    out = JSON.parse(j.choices?.[0]?.message?.content ?? "{}");
+  } catch (e) {
+    console.error("order AI error", e);
+    return;
+  }
+  if (!out.is_order || !out.product) return;
+  const qty = Math.max(1, Math.round(Number(out.quantity) || 1));
+  const title = `${String(out.product).slice(0, 120)}${qty > 1 ? ` ×${qty}` : ""}`;
+  const { error } = await supabaseAdmin.from("records").insert({ owner_id: p.ownerId, title, client: p.fromName, amount: Math.max(0, Number(out.amount) || 0), status: "new", data_type: "record" });
+  if (error) { console.error("order insert failed", error); return; }
+  const ack = tr({ uz: "✅ Buyurtmangiz qabul qilindi, tez orada bog'lanamiz.", ru: "✅ Заказ принят, скоро с вами свяжемся.", en: "✅ Order received, we'll contact you shortly." }, p.lang);
+  await tg("sendMessage", { chat_id: p.chatId, text: ack, reply_parameters: { message_id: p.messageId, allow_sending_without_reply: true } }).catch((e) => console.error("order ack failed", e));
+  await notifyOwner(p.ownerId, `🛍 ${tr({ uz: "Guruhdan yangi buyurtma", ru: "Новый заказ из группы", en: "New order from group" }, p.lang)}: <b>${escapeHtml(title)}</b> — ${escapeHtml(p.fromName ?? "")}`);
+}
+
+export const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
