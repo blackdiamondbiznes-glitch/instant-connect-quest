@@ -243,7 +243,8 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return new Response("Unauthorized", { status: 401 });
         const update = await request.json();
         try {
-          await handle(update, new URL(request.url).origin);
+          // Private preview (-dev) pages return 403 inside Telegram; always open the cabinet on the published site.
+          await handle(update, new URL(request.url).origin.replace(/-dev\.lovable\.app$/, ".lovable.app"));
         } catch (e) {
           console.error("webhook error", e);
         }
