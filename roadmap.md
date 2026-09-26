@@ -5,3 +5,8 @@
 - [x] Platforma admin paneli (/admin)
 - [x] Obuna boshqaruvi
 - [x] Demo sandbox (/ va /demo)
+- [x] Eslatma, ommaviy xabar, VIP to'lov/kirish, guruh buyurtmalari (kod)
+- [x] Eski yozuvlar uchun "Barcha kontaktlar / Barcha yozuvlar" bo'limlari
+- [x] Telegram bot ulandi, webhook o'rnatildi, bot tokeni kiritildi
+- [ ] Soatlik avtomatik ish (eslatmalar, VIP muddati) — Cloud → Jobs orqali yoqish kerak
+- [ ] Guruh xabarlarini o'qish: BotFather'da Privacy Mode'ni o'chirish (foydalanuvchi)
