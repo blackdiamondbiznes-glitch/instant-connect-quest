@@ -26,7 +26,7 @@ export const Route = createFileRoute("/api/public/pay/payme/$owner")({
         const a = Buffer.from(auth), b = Buffer.from(expected);
         if (!expected || a.length !== b.length || !timingSafeEqual(a, b)) return err(-32504, "Unauthorized");
 
-        const p = body.params ?? {};
+        const p: any = body.params ?? {};
         const loadOrder = async (orderId: unknown) => {
           if (typeof orderId !== "string" || !/^[0-9a-f-]{36}$/i.test(orderId)) return null;
           const { data } = await supabaseAdmin.from("vip_orders").select("*").eq("id", orderId).eq("owner_id", ownerId).maybeSingle();

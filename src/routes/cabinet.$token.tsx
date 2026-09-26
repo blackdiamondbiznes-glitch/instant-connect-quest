@@ -105,6 +105,11 @@ function buildTabs(modules: string[], lang: string, u: (k: string) => string): M
     seen.add(key);
     out.push({ id: `m:${id}`, icon: tableFor(m.data_type) === "members" ? Users : ClipboardList, label: tr(m.label, lang), mod: m });
   }
+  const allOf = (id: string, dt: "member" | "record", label: L): ModuleDef => ({ id, label, desc: label, component: "list", data_type: dt, statuses: [], niches: [] });
+  const am = allOf("all_members", "member", { uz: "Barcha kontaktlar", ru: "Все контакты", en: "All contacts" });
+  const ar = allOf("all_records", "record", { uz: "Barcha yozuvlar", ru: "Все записи", en: "All records" });
+  out.push({ id: "m:all_members", icon: Users, label: tr(am.label, lang), mod: am });
+  out.push({ id: "m:all_records", icon: ClipboardList, label: tr(ar.label, lang), mod: ar });
   if (ai) out.push({ id: "ai", icon: Brain, label: u("ai") });
   out.push({ id: "mods", icon: Puzzle, label: u("mods") });
   return out;
