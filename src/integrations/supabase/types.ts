@@ -14,69 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      content_suggestions: {
-        Row: {
-          chat_id: number | null
-          created_at: string
-          id: string
-          kind: string
-          meta: Json
-          owner_id: number
-          published_at: string | null
-          published_message_id: number | null
-          status: string
-          text: string
-        }
-        Insert: {
-          chat_id?: number | null
-          created_at?: string
-          id?: string
-          kind: string
-          meta?: Json
-          owner_id: number
-          published_at?: string | null
-          published_message_id?: number | null
-          status?: string
-          text: string
-        }
-        Update: {
-          chat_id?: number | null
-          created_at?: string
-          id?: string
-          kind?: string
-          meta?: Json
-          owner_id?: number
-          published_at?: string | null
-          published_message_id?: number | null
-          status?: string
-          text?: string
-        }
-        Relationships: []
-      }
-      usage_counters: {
-        Row: {
-          bucket: string
-          count: number
-          owner_id: number
-          period_key: number
-          updated_at: string
-        }
-        Insert: {
-          bucket: string
-          count?: number
-          owner_id: number
-          period_key: number
-          updated_at?: string
-        }
-        Update: {
-          bucket?: string
-          count?: number
-          owner_id?: number
-          period_key?: number
-          updated_at?: string
-        }
-        Relationships: []
-      }
       bot_customers: {
         Row: {
           mode: string | null
@@ -137,6 +74,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "broadcasts_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "tg_owners"
+            referencedColumns: ["telegram_id"]
+          },
+        ]
+      }
+      content_suggestions: {
+        Row: {
+          chat_id: number | null
+          created_at: string
+          id: string
+          kind: string
+          meta: Json
+          owner_id: number
+          published_at: string | null
+          published_message_id: number | null
+          status: string
+          text: string
+        }
+        Insert: {
+          chat_id?: number | null
+          created_at?: string
+          id?: string
+          kind: string
+          meta?: Json
+          owner_id: number
+          published_at?: string | null
+          published_message_id?: number | null
+          status?: string
+          text: string
+        }
+        Update: {
+          chat_id?: number | null
+          created_at?: string
+          id?: string
+          kind?: string
+          meta?: Json
+          owner_id?: number
+          published_at?: string | null
+          published_message_id?: number | null
+          status?: string
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_suggestions_owner_id_fkey"
             columns: ["owner_id"]
             isOneToOne: false
             referencedRelation: "tg_owners"
@@ -536,6 +520,38 @@ export type Database = {
         }
         Relationships: []
       }
+      usage_counters: {
+        Row: {
+          bucket: string
+          count: number
+          owner_id: number
+          period_key: number
+          updated_at: string
+        }
+        Insert: {
+          bucket: string
+          count?: number
+          owner_id: number
+          period_key: number
+          updated_at?: string
+        }
+        Update: {
+          bucket?: string
+          count?: number
+          owner_id?: number
+          period_key?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_counters_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "tg_owners"
+            referencedColumns: ["telegram_id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -713,20 +729,27 @@ export type Database = {
     }
     Functions: {
       add_message_engagement: {
-        Args: { _absolute_reactions?: boolean; _chat: number; _msg: number; _reactions: number; _replies: number }
+        Args: {
+          _absolute_reactions?: boolean
+          _chat: number
+          _msg: number
+          _reactions: number
+          _replies: number
+        }
         Returns: undefined
       }
       bootstrap_first_admin: { Args: { _user_id: string }; Returns: boolean }
-      consume_quota: {
-        Args: { _bucket: string; _max: number; _owner: number; _period_days: number }
-        Returns: boolean
-      }
-      refund_quota: {
-        Args: { _bucket: string; _owner: number; _period_days: number }
-        Returns: undefined
-      }
       consume_analysis_slot: {
         Args: { _max?: number; _owner: number }
+        Returns: boolean
+      }
+      consume_quota: {
+        Args: {
+          _bucket: string
+          _max: number
+          _owner: number
+          _period_days: number
+        }
         Returns: boolean
       }
       has_role: {
@@ -737,6 +760,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      refund_quota: {
+        Args: { _bucket: string; _owner: number; _period_days: number }
+        Returns: undefined
+      }
       replace_question_clusters: {
         Args: { _owner: number; _rows: Json }
         Returns: undefined
