@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { tg } from "./telegram.server";
-import { tr, type L } from "./niches";
+import { tr, vipMemberStatus, type L } from "./niches";
 
 const M: Record<string, L> = {
   vipPaid: { uz: "✅ To'lov qabul qilindi! Kirish havolangiz (bir martalik):", ru: "✅ Оплата получена! Ваша ссылка для входа (одноразовая):", en: "✅ Payment received! Your one-time access link:" },
@@ -74,9 +74,9 @@ export async function runDueReminders() {
   return count;
 }
 
-async function ownerLang(ownerId: number) {
-  const { data } = await supabaseAdmin.from("tg_owners").select("language").eq("telegram_id", ownerId).maybeSingle();
-  return data?.language ?? "uz";
+async function ownerInfo(ownerId: number) {
+  const { data } = await supabaseAdmin.from("tg_owners").select("language,niche").eq("telegram_id", ownerId).maybeSingle();
+  return { lang: data?.language ?? "uz", niche: data?.niche ?? null };
 }
 
 /** Marks a VIP order paid (idempotent) and sends a one-time invite link. */
@@ -91,19 +91,20 @@ export async function fulfillVipOrder(orderId: string, provider: string, provide
     .eq("id", o.id).neq("status", "paid").select("id");
   if (!upd?.length) return true; // another request fulfilled it
 
-  const { data: sub } = await supabaseAdmin.from("vip_subs").select("ends_at").eq("owner_id", o.owner_id).eq("tg_user_id", o.tg_user_id).maybeSingle();
-  const base = sub && new Date(sub.ends_at) > paidAt ? new Date(sub.ends_at) : paidAt;
+  // Stack on top of remaining time instead of resetting it.
+  const { data: sub } = await supabaseAdmin.from("vip_subs").select("ends_at,status").eq("owner_id", o.owner_id).eq("tg_user_id", o.tg_user_id).maybeSingle();
+  const base = sub && sub.status === "active" && new Date(sub.ends_at) > paidAt ? new Date(sub.ends_at) : paidAt;
   const ends = new Date(base.getTime() + o.days * 86400000);
   const chatId = s?.chat_id ?? null;
   if (chatId) {
     await supabaseAdmin.from("vip_subs").upsert({ owner_id: o.owner_id, tg_user_id: o.tg_user_id, user_name: o.user_name, chat_id: chatId, ends_at: ends.toISOString(), status: "active", notified_at: null });
   }
+  const { lang, niche } = await ownerInfo(o.owner_id);
   await supabaseAdmin.from("members").upsert(
-    { owner_id: o.owner_id, tg_user_id: o.tg_user_id, name: o.user_name ?? String(o.tg_user_id), status: "active", amount: Number(o.amount), note: `VIP → ${ends.toISOString().slice(0, 10)}` },
+    { owner_id: o.owner_id, tg_user_id: o.tg_user_id, name: o.user_name ?? String(o.tg_user_id), status: vipMemberStatus(niche, "active"), amount: Number(o.amount), note: `VIP → ${ends.toISOString().slice(0, 10)}` },
     { onConflict: "owner_id,tg_user_id" },
   );
 
-  const lang = await ownerLang(o.owner_id);
   if (chatId) {
     try {
       await tg("unbanChatMember", { chat_id: chatId, user_id: o.tg_user_id, only_if_banned: true }).catch(() => {});
@@ -123,25 +124,29 @@ export async function processVipExpiry() {
   const soon = new Date(now + 3 * 86400000).toISOString();
   const { data: expiring } = await supabaseAdmin.from("vip_subs").select("*").eq("status", "active").is("notified_at", null).lte("ends_at", soon).gt("ends_at", new Date(now).toISOString()).limit(200);
   for (const s of expiring ?? []) {
-    const lang = await ownerLang(s.owner_id);
+    // Claim the warning first so an overlapping run can't send it twice.
+    const { data: claimed } = await supabaseAdmin.from("vip_subs").update({ notified_at: new Date().toISOString() })
+      .eq("owner_id", s.owner_id).eq("tg_user_id", s.tg_user_id).is("notified_at", null).select("owner_id");
+    if (!claimed?.length) continue;
+    const { lang, niche } = await ownerInfo(s.owner_id);
     const link = await deepLink(`vip_${s.owner_id}`);
     await tg("sendMessage", { chat_id: s.tg_user_id, text: `${m("vipExpiring", lang)} ${link ?? ""}` }).catch((e) => console.error("vip warn failed", e));
-    await supabaseAdmin.from("vip_subs").update({ notified_at: new Date().toISOString() }).eq("owner_id", s.owner_id).eq("tg_user_id", s.tg_user_id);
-    await supabaseAdmin.from("members").update({ status: "expiring" }).eq("owner_id", s.owner_id).eq("tg_user_id", s.tg_user_id);
+    await supabaseAdmin.from("members").update({ status: vipMemberStatus(niche, "expiring") }).eq("owner_id", s.owner_id).eq("tg_user_id", s.tg_user_id);
   }
   const { data: expired } = await supabaseAdmin.from("vip_subs").select("*").eq("status", "active").lte("ends_at", new Date(now).toISOString()).limit(200);
   for (const s of expired ?? []) {
     try {
+      // Ban then immediately unban: removes the user but lets them rejoin after paying again.
       await tg("banChatMember", { chat_id: s.chat_id, user_id: s.tg_user_id, until_date: Math.floor(now / 1000) + 60 });
       await tg("unbanChatMember", { chat_id: s.chat_id, user_id: s.tg_user_id, only_if_banned: true });
     } catch (e) {
       console.error("vip remove failed", e);
     }
-    const lang = await ownerLang(s.owner_id);
+    const { lang, niche } = await ownerInfo(s.owner_id);
     const link = await deepLink(`vip_${s.owner_id}`);
     await tg("sendMessage", { chat_id: s.tg_user_id, text: `${m("vipExpired", lang)} ${link ?? ""}` }).catch(() => {});
     await supabaseAdmin.from("vip_subs").update({ status: "expired" }).eq("owner_id", s.owner_id).eq("tg_user_id", s.tg_user_id);
-    await supabaseAdmin.from("members").update({ status: "expired" }).eq("owner_id", s.owner_id).eq("tg_user_id", s.tg_user_id);
+    await supabaseAdmin.from("members").update({ status: vipMemberStatus(niche, "expired") }).eq("owner_id", s.owner_id).eq("tg_user_id", s.tg_user_id);
   }
   return { warned: expiring?.length ?? 0, removed: expired?.length ?? 0 };
 }

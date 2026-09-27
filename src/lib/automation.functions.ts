@@ -23,6 +23,8 @@ export const getAutomation = createServerFn({ method: "POST" })
       supabaseAdmin.from("vip_orders").select("id,user_name,amount,status,provider,created_at").eq("owner_id", id).order("created_at", { ascending: false }).limit(20),
     ]);
     const s = vs.data;
+    const { appUrl } = await import("./telegram.server");
+    const origin = appUrl();
     const [shopLink, vipLink] = owner.is_demo ? [null, null] : await Promise.all([deepLink(`shop_${id}`), deepLink(`vip_${id}`)]);
     return {
       reminders: (rem.data ?? []) as Reminder[],
@@ -35,7 +37,7 @@ export const getAutomation = createServerFn({ method: "POST" })
       },
       subs: (subs.data ?? []) as VipSub[],
       orders: (orders.data ?? []) as unknown as VipOrder[],
-      links: { shop: shopLink, vip: vipLink, payme: `/api/public/pay/payme/${id}`, click: `/api/public/pay/click` },
+      links: { shop: shopLink, vip: vipLink, payme: `${origin}/api/public/pay/payme/${id}`, click: `${origin}/api/public/pay/click` },
     };
   });
 
@@ -61,6 +63,18 @@ export const saveReminder = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+export const toggleReminder = createServerFn({ method: "POST" })
+  .inputValidator((d) => Tok.extend({ id: z.string().uuid(), active: z.boolean() }).parse(d))
+  .handler(async ({ data }) => {
+    const { mutationOwner, supabaseAdmin } = await import("./cabinet.server");
+    const r = await mutationOwner(data.token, data.initData);
+    if (r.error) return { ok: false as const, error: r.error };
+    if (!(r.owner.modules as string[]).includes("reminders")) return { ok: false as const, error: "module_disabled" as const };
+    const { error } = await supabaseAdmin.from("reminders").update({ active: data.active }).eq("id", data.id).eq("owner_id", r.owner.telegram_id);
+    if (error) throw new Error(error.message);
+    return { ok: true as const };
+  });
+
 export const deleteReminder = createServerFn({ method: "POST" })
   .inputValidator((d) => Tok.extend({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
@@ -75,14 +89,14 @@ export const deleteReminder = createServerFn({ method: "POST" })
 export const sendBroadcast = createServerFn({ method: "POST" })
   .inputValidator((d) => Tok.extend({ text: z.string().trim().min(1).max(3500) }).parse(d))
   .handler(async ({ data }) => {
-    const { mutationOwner, supabaseAdmin } = await import("./cabinet.server");
+    const { mutationOwner, consumeQuota, supabaseAdmin } = await import("./cabinet.server");
     const r = await mutationOwner(data.token, data.initData);
     if (r.error) return { ok: false as const, error: r.error, sent: 0 };
     if (!(r.owner.modules as string[]).includes("broadcast")) return { ok: false as const, error: "module_disabled" as const, sent: 0 };
-    // Max 10 broadcasts per day to avoid spam bans.
-    const since = new Date(Date.now() - 86400000).toISOString();
-    const { count } = await supabaseAdmin.from("broadcasts").select("id", { count: "exact", head: true }).eq("owner_id", r.owner.telegram_id).gte("created_at", since);
-    if ((count ?? 0) >= 10) return { ok: false as const, error: "rate_limited" as const, sent: 0 };
+    const { count: chats } = await supabaseAdmin.from("tg_chats").select("chat_id", { count: "exact", head: true }).eq("owner_id", r.owner.telegram_id);
+    if (!chats) return { ok: false as const, error: "no_chats" as const, sent: 0 };
+    const { BROADCASTS_PER_DAY } = await import("./config");
+    if (!(await consumeQuota(r.owner.telegram_id, "broadcast", { periodDays: 1, max: BROADCASTS_PER_DAY }))) return { ok: false as const, error: "broadcast_limited" as const, sent: 0 };
     const { broadcast } = await import("./automation.server");
     const res = await broadcast(r.owner.telegram_id, data.text);
     return { ok: true as const, error: null, sent: res.sent };
@@ -103,8 +117,7 @@ export const saveVipSettings = createServerFn({ method: "POST" })
     const { mutationOwner, supabaseAdmin } = await import("./cabinet.server");
     const r = await mutationOwner(data.token, data.initData);
     if (r.error) return { ok: false as const, error: r.error };
-    const mods = r.owner.modules as string[];
-    if (!mods.includes("access") && !mods.includes("subs")) return { ok: false as const, error: "module_disabled" as const };
+    if (!(r.owner.modules as string[]).includes("access")) return { ok: false as const, error: "module_disabled" as const };
     const chatId = data.chat_id == null || data.chat_id === "" ? null : Number(data.chat_id);
     if (chatId !== null) {
       const { data: c } = await supabaseAdmin.from("tg_chats").select("chat_id").eq("chat_id", chatId).eq("owner_id", r.owner.telegram_id).maybeSingle();

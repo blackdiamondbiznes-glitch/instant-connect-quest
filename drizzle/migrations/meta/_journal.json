@@ -36,6 +36,13 @@
       "when": 1790372392587,
       "tag": "0004_automation_vip_shop",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790500000000,
+      "tag": "0005_spec_alignment_content_engine",
+      "breakpoints": true
     }
   ]
 }

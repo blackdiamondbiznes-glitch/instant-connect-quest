@@ -1,14 +1,36 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Database } from "@/integrations/supabase/types";
+import { PLAN_TIERS, TRIAL_TIER, type PlanTier, type Quota } from "./config";
 
 export type Owner = Database["public"]["Tables"]["tg_owners"]["Row"];
 export type CabinetError = "demo_readonly" | "plan_expired" | "module_disabled";
 
 export async function ownerByToken(token: string): Promise<Owner> {
   const { data, error } = await supabaseAdmin.from("tg_owners").select("*").eq("cabinet_token", token).maybeSingle();
-  if (error || !data) throw new Error("Kabinet topilmadi");
+  if (error || !data) throw new Error("NotFound");
   return data;
+}
+
+/** Tier that drives content cadence: trial owners get TRIAL_TIER, others their stored tier. */
+export function effectiveTier(o: Owner): PlanTier {
+  if (o.plan_status === "trial") return TRIAL_TIER;
+  return (PLAN_TIERS as string[]).includes(o.plan_tier) ? (o.plan_tier as PlanTier) : "free";
+}
+
+/** Atomically consumes one use of `bucket` for this owner within the quota window. */
+export async function consumeQuota(ownerId: number, bucket: string, q: Quota): Promise<boolean> {
+  const { data, error } = await supabaseAdmin.rpc("consume_quota", { _owner: ownerId, _bucket: bucket, _period_days: q.periodDays, _max: q.max });
+  if (error) {
+    console.error("consume_quota failed", error);
+    return false;
+  }
+  return data === true;
+}
+
+export async function refundQuota(ownerId: number, bucket: string, q: Quota) {
+  const { error } = await supabaseAdmin.rpc("refund_quota", { _owner: ownerId, _bucket: bucket, _period_days: q.periodDays });
+  if (error) console.error("refund_quota failed", error);
 }
 
 const MAX_AGE_SEC = 24 * 3600;

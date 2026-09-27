@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { authenticateCronRequest } from "@/integrations/supabase/cron-auth";
 
-/** Hourly job: due reminders + VIP expiry warnings/removals. */
+/** Hourly job: due reminders, VIP expiry warnings/removals, AI content engine cadence. */
 export const Route = createFileRoute("/api/public/hooks/tick")({
   staticData: { sitemap: false },
   server: {
@@ -12,7 +12,9 @@ export const Route = createFileRoute("/api/public/hooks/tick")({
         const { runDueReminders, processVipExpiry } = await import("@/lib/automation.server");
         const reminders = await runDueReminders().catch((e) => { console.error("reminders failed", e); return -1; });
         const vip = await processVipExpiry().catch((e) => { console.error("vip expiry failed", e); return null; });
-        return Response.json({ ok: true, reminders, vip });
+        const { runContentEngine } = await import("@/lib/content.server");
+        const content = await runContentEngine().catch((e) => { console.error("content engine failed", e); return null; });
+        return Response.json({ ok: true, reminders, vip, content });
       },
     },
   },

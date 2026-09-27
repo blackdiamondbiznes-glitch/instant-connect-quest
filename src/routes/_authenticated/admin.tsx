@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, ExternalLink, LogOut } from "lucide-react";
-import { getAdminStatus, getAdminOverview, updateSubscription } from "@/lib/admin.functions";
+import { getAdminStatus, getAdminOverview, updateSubscription, setPlanTier, registerTelegramWebhook } from "@/lib/admin.functions";
 import { getNiche, WORKSPACES, tr } from "@/lib/niches";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,8 @@ function AdminPage() {
   const statusFn = useServerFn(getAdminStatus);
   const overviewFn = useServerFn(getAdminOverview);
   const subFn = useServerFn(updateSubscription);
+  const tierFn = useServerFn(setPlanTier);
+  const hookFn = useServerFn(registerTelegramWebhook);
   const [filter, setFilter] = useState("");
   const [days, setDays] = useState(30);
 
@@ -81,12 +83,32 @@ function AdminPage() {
       toast.error("Xatolik yuz berdi");
     }
   };
+  const setTier = async (telegramId: number, tier: "free" | "start" | "pro") => {
+    try {
+      await tierFn({ data: { telegramId, tier } });
+      toast.success("Saqlandi");
+      qc.invalidateQueries({ queryKey: ["admin"] });
+    } catch {
+      toast.error("Xatolik yuz berdi");
+    }
+  };
+  const registerHook = async () => {
+    try {
+      const r = await hookFn();
+      toast.success(`Webhook: ${r.url}`);
+    } catch (e) {
+      toast.error(String((e as Error).message ?? "Xatolik yuz berdi"));
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <header className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
         <Link to="/" className="font-display text-lg font-bold">Kabinet<span className="text-accent">AI</span> <span className="text-sm font-medium text-muted-foreground">admin</span></Link>
-        <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="h-4 w-4" /> Chiqish</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={registerHook} title="setWebhook: reaksiyalar va kanal postlari bilan">Webhookni qayta ro'yxatdan o'tkazish</Button>
+          <Button variant="ghost" size="sm" onClick={signOut}><LogOut className="h-4 w-4" /> Chiqish</Button>
+        </div>
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 px-6 pb-16">
@@ -146,7 +168,7 @@ function AdminPage() {
                   const ni = u.niche ? getNiche(u.niche) : null;
                   return (
                     <tr key={u.telegram_id} className="border-b border-border align-top">
-                      <td className="px-2 py-3"><b>{u.first_name ?? "—"}</b><div className="text-xs text-muted-foreground">{u.username ? "@" + u.username : ""}</div></td>
+                      <td className="px-2 py-3"><b>{u.display_name || u.first_name || "—"}</b><div className="text-xs text-muted-foreground">{u.username ? "@" + u.username : ""}</div></td>
                       <td className="px-2 py-3 font-mono text-xs">{u.telegram_id}</td>
                       <td className="px-2 py-3">{ni ? `${ni.emoji} ${tr(ni.name, "uz")}` : <span className="text-muted-foreground">sozlanmoqda</span>}</td>
                       <td className="px-2 py-3 uppercase">{u.language}</td>
@@ -155,6 +177,9 @@ function AdminPage() {
                       <td className="px-2 py-3">
                         <span className={cn("rounded-md px-2 py-0.5 text-xs font-semibold", statusCls[u.status] ?? statusCls['trial'])}>{statusLabel[u.status] ?? u.status}</span>
                         {u.ends_at && <div className="mt-1 text-xs text-muted-foreground">{new Date(u.ends_at).toLocaleDateString("ru-RU")} gacha</div>}
+                        <select value={u.plan_tier} onChange={(e) => setTier(u.telegram_id, e.target.value as "free" | "start" | "pro")} className="mt-1 h-7 rounded-md border border-border bg-background px-1 text-xs" aria-label="Tarif">
+                          {["free", "start", "pro"].map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
                       </td>
                       <td className="px-2 py-3">
                         <div className="flex flex-wrap gap-1">

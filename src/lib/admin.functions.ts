@@ -79,7 +79,7 @@ export const getAdminOverview = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const [owners, chats, msgs, clusters] = await Promise.all([
-      supabaseAdmin.from("tg_owners").select("telegram_id, first_name, username, language, niche, workspace_type, step, plan_status, trial_ends_at, subscription_ends_at, cabinet_token, created_at").eq("is_demo", false).order("created_at", { ascending: false }),
+      supabaseAdmin.from("tg_owners").select("telegram_id, first_name, username, display_name, language, niche, workspace_type, step, plan_status, plan_tier, trial_ends_at, subscription_ends_at, cabinet_token, created_at").eq("is_demo", false).order("created_at", { ascending: false }),
       supabaseAdmin.from("tg_chats").select("owner_id, title, chat_type"),
       supabaseAdmin.from("tg_messages").select("id", { count: "exact", head: true }),
       supabaseAdmin.from("question_clusters").select("id", { count: "exact", head: true }),
@@ -129,4 +129,23 @@ export const updateSubscription = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin.from("tg_owners").update(patch).eq("telegram_id", data.telegramId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+export const setPlanTier = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ telegramId: TgId, tier: z.enum(["free", "start", "pro"]) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("tg_owners").update({ plan_tier: data.tier }).eq("telegram_id", data.telegramId).eq("is_demo", false);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const registerTelegramWebhook = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { registerWebhook } = await import("./telegram.server");
+    return registerWebhook();
   });
