@@ -14,6 +14,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      content_suggestions: {
+        Row: {
+          chat_id: number | null
+          created_at: string
+          id: string
+          kind: string
+          meta: Json
+          owner_id: number
+          published_at: string | null
+          published_message_id: number | null
+          status: string
+          text: string
+        }
+        Insert: {
+          chat_id?: number | null
+          created_at?: string
+          id?: string
+          kind: string
+          meta?: Json
+          owner_id: number
+          published_at?: string | null
+          published_message_id?: number | null
+          status?: string
+          text: string
+        }
+        Update: {
+          chat_id?: number | null
+          created_at?: string
+          id?: string
+          kind?: string
+          meta?: Json
+          owner_id?: number
+          published_at?: string | null
+          published_message_id?: number | null
+          status?: string
+          text?: string
+        }
+        Relationships: []
+      }
+      usage_counters: {
+        Row: {
+          bucket: string
+          count: number
+          owner_id: number
+          period_key: number
+          updated_at: string
+        }
+        Insert: {
+          bucket: string
+          count?: number
+          owner_id: number
+          period_key: number
+          updated_at?: string
+        }
+        Update: {
+          bucket?: string
+          count?: number
+          owner_id?: number
+          period_key?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bot_customers: {
         Row: {
           mode: string | null
@@ -338,6 +401,7 @@ export type Database = {
       }
       tg_messages: {
         Row: {
+          ai_generated: boolean
           chat_id: number
           created_at: string
           from_name: string | null
@@ -345,10 +409,15 @@ export type Database = {
           is_question: boolean
           kind: string
           message_id: number
+          origin_chat_id: number | null
+          origin_message_id: number | null
           owner_id: number
+          reactions: number
+          replies: number
           text: string
         }
         Insert: {
+          ai_generated?: boolean
           chat_id: number
           created_at?: string
           from_name?: string | null
@@ -356,10 +425,15 @@ export type Database = {
           is_question?: boolean
           kind?: string
           message_id: number
+          origin_chat_id?: number | null
+          origin_message_id?: number | null
           owner_id: number
+          reactions?: number
+          replies?: number
           text: string
         }
         Update: {
+          ai_generated?: boolean
           chat_id?: number
           created_at?: string
           from_name?: string | null
@@ -367,7 +441,11 @@ export type Database = {
           is_question?: boolean
           kind?: string
           message_id?: number
+          origin_chat_id?: number | null
+          origin_message_id?: number | null
           owner_id?: number
+          reactions?: number
+          replies?: number
           text?: string
         }
         Relationships: [
@@ -385,13 +463,19 @@ export type Database = {
           analysis_day: string | null
           analysis_runs: number
           cabinet_token: string
+          content_auto_publish: boolean
+          content_chat_id: number | null
+          content_footer_disabled: boolean
           created_at: string
+          display_name: string | null
           first_name: string | null
           is_demo: boolean
           language: string
           modules: string[]
           niche: string | null
+          onboarded_at: string | null
           plan_status: string
+          plan_tier: string
           step: string
           subscription_ends_at: string | null
           telegram_id: number
@@ -404,13 +488,19 @@ export type Database = {
           analysis_day?: string | null
           analysis_runs?: number
           cabinet_token?: string
+          content_auto_publish?: boolean
+          content_chat_id?: number | null
+          content_footer_disabled?: boolean
           created_at?: string
+          display_name?: string | null
           first_name?: string | null
           is_demo?: boolean
           language?: string
           modules?: string[]
           niche?: string | null
+          onboarded_at?: string | null
           plan_status?: string
+          plan_tier?: string
           step?: string
           subscription_ends_at?: string | null
           telegram_id: number
@@ -423,13 +513,19 @@ export type Database = {
           analysis_day?: string | null
           analysis_runs?: number
           cabinet_token?: string
+          content_auto_publish?: boolean
+          content_chat_id?: number | null
+          content_footer_disabled?: boolean
           created_at?: string
+          display_name?: string | null
           first_name?: string | null
           is_demo?: boolean
           language?: string
           modules?: string[]
           niche?: string | null
+          onboarded_at?: string | null
           plan_status?: string
+          plan_tier?: string
           step?: string
           subscription_ends_at?: string | null
           telegram_id?: number
@@ -616,7 +712,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_message_engagement: {
+        Args: { _absolute_reactions?: boolean; _chat: number; _msg: number; _reactions: number; _replies: number }
+        Returns: undefined
+      }
       bootstrap_first_admin: { Args: { _user_id: string }; Returns: boolean }
+      consume_quota: {
+        Args: { _bucket: string; _max: number; _owner: number; _period_days: number }
+        Returns: boolean
+      }
+      refund_quota: {
+        Args: { _bucket: string; _owner: number; _period_days: number }
+        Returns: undefined
+      }
       consume_analysis_slot: {
         Args: { _max?: number; _owner: number }
         Returns: boolean

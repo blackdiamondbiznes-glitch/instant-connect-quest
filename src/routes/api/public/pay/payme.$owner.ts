@@ -11,11 +11,13 @@ export const Route = createFileRoute("/api/public/pay/payme/$owner")({
     handlers: {
       POST: async ({ request, params }) => {
         let body: Rpc = {};
-        try { body = await request.json(); } catch { /* handled below */ }
+        let parsed = true;
+        try { body = await request.json(); } catch { parsed = false; }
         const id = body.id ?? null;
         const ok = (result: unknown) => Response.json({ id, result });
         const err = (code: number, msg: string, data?: string) =>
           Response.json({ id, error: { code, message: { uz: msg, ru: msg, en: msg }, data } });
+        if (!parsed) return err(-32700, "Parse error");
 
         const ownerId = Number(params.owner);
         if (!Number.isFinite(ownerId)) return err(-32504, "Unauthorized");
@@ -53,6 +55,10 @@ export const Route = createFileRoute("/api/public/pay/payme/$owner")({
             const existing = await byTx(p.id);
             if (existing) {
               if (existing.payme_state !== 1) return err(-31008, "Cannot perform");
+              if (Date.now() - Number(existing.payme_create_time) > TIMEOUT_MS) {
+                await supabaseAdmin.from("vip_orders").update({ payme_state: -1, payme_reason: 4, payme_cancel_time: Date.now(), status: "cancelled" }).eq("id", existing.id).eq("payme_state", 1);
+                return err(-31008, "Timeout");
+              }
               return ok({ create_time: Number(existing.payme_create_time), transaction: existing.id, state: 1 });
             }
             const o = await loadOrder(p.account?.order_id);
@@ -60,7 +66,8 @@ export const Route = createFileRoute("/api/public/pay/payme/$owner")({
             if (Math.round(Number(o.amount) * 100) !== Number(p.amount)) return err(-31001, "Wrong amount");
             if (o.status !== "pending" || o.payme_state) return err(-31050, "Order busy", "order_id");
             const t = Number(p.time) || Date.now();
-            await supabaseAdmin.from("vip_orders").update({ provider: "payme", provider_tx: String(p.id), payme_state: 1, payme_create_time: t }).eq("id", o.id);
+            const { data: created } = await supabaseAdmin.from("vip_orders").update({ provider: "payme", provider_tx: String(p.id), payme_state: 1, payme_create_time: t }).eq("id", o.id).is("payme_state", null).select("id");
+            if (!created?.length) return err(-31050, "Order busy", "order_id");
             return ok({ create_time: t, transaction: o.id, state: 1 });
           }
           case "PerformTransaction": {
@@ -69,11 +76,15 @@ export const Route = createFileRoute("/api/public/pay/payme/$owner")({
             if (o.payme_state === 2) return ok({ transaction: o.id, perform_time: Number(o.payme_perform_time), state: 2 });
             if (o.payme_state !== 1) return err(-31008, "Cannot perform");
             if (Date.now() - Number(o.payme_create_time) > TIMEOUT_MS) {
-              await supabaseAdmin.from("vip_orders").update({ payme_state: -1, payme_reason: 4, payme_cancel_time: Date.now(), status: "cancelled" }).eq("id", o.id);
+              await supabaseAdmin.from("vip_orders").update({ payme_state: -1, payme_reason: 4, payme_cancel_time: Date.now(), status: "cancelled" }).eq("id", o.id).eq("payme_state", 1);
               return err(-31008, "Timeout");
             }
             const t = Date.now();
-            await supabaseAdmin.from("vip_orders").update({ payme_state: 2, payme_perform_time: t }).eq("id", o.id);
+            const { data: moved } = await supabaseAdmin.from("vip_orders").update({ payme_state: 2, payme_perform_time: t }).eq("id", o.id).eq("payme_state", 1).select("payme_perform_time");
+            if (!moved?.length) {
+              const again = await byTx(p.id);
+              return again?.payme_state === 2 ? ok({ transaction: again.id, perform_time: Number(again.payme_perform_time), state: 2 }) : err(-31008, "Cannot perform");
+            }
             const { fulfillVipOrder } = await import("@/lib/automation.server");
             await fulfillVipOrder(o.id, "payme", String(p.id));
             return ok({ transaction: o.id, perform_time: t, state: 2 });
