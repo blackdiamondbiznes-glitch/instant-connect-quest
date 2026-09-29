@@ -78,6 +78,13 @@
       "when": 1790710867224,
       "tag": "0010_booking_reminder_hours_closed_on",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790710948241,
+      "tag": "0011_retry_booking_reminder_hours_closed_on",
+      "breakpoints": true
     }
   ]
 }
