@@ -71,6 +71,13 @@
       "when": 1790668357486,
       "tag": "0009_apply_pending_beauty_booking_migrations",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790710867224,
+      "tag": "0010_booking_reminder_hours_closed_on",
+      "breakpoints": true
     }
   ]
 }
