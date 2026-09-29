@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { timingSafeEqual } from "crypto";
 import { tg, webhookSecret } from "@/lib/telegram.server";
-import { LANGS, NICHES, UNIVERSAL_MODULES, WORKSPACES, getModule, getNiche, isLang, offeredModules, tr, type L, type Lang } from "@/lib/niches";
+import { LANGS, NICHES, UNIVERSAL_MODULES, WORKSPACES, getModule, getNiche, isLang, nichePack, offeredModules, tr, type L, type Lang } from "@/lib/niches";
 
 const T = {
   chooseLang: { uz: "🌐 Tilni tanlang / Выберите язык / Choose language", ru: "🌐 Tilni tanlang / Выберите язык / Choose language", en: "🌐 Tilni tanlang / Выберите язык / Choose language" },
@@ -11,12 +11,13 @@ const T = {
   back: { uz: "⬅️ Orqaga", ru: "⬅️ Назад", en: "⬅️ Back" },
   done: { uz: "✅ Tayyor", ru: "✅ Готово", en: "✅ Done" },
   ready: { uz: "🎉 Shaxsiy kabinetingiz tayyor!\n\nGuruh yoki kanalingizni ulash uchun botni u yerga <b>admin</b> qilib qo'shing — shunda AI a'zolar kayfiyatini va savollarini tahlil qila boshlaydi.", ru: "🎉 Ваш личный кабинет готов!\n\nДобавьте бота в группу или канал как <b>администратора</b>, чтобы начать AI-анализ настроения и вопросов участников.", en: "🎉 Your cabinet is ready!\n\nAdd the bot to your group/channel as <b>admin</b> to start AI analysis of member mood and questions." },
+  readyBook: { uz: "🎉 Kabinet tayyor.\n\n1. Tugma orqali kabinetni oching.\n2. Shu havolani kanal yoki guruhga qo'ying — mijoz shu yerda yoziladi:\n{link}\n3. Kabinet → Sozlamalar → Xizmatlar: narxlaringiz bo'lmasa, havola ishlamaydi.\n\nBotni kanalga admin qilish ixtiyoriy (post va AI uchun).", ru: "🎉 Кабинет готов.\n\n1. Откройте кабинет кнопкой.\n2. Поставьте эту ссылку в канал или группу — клиент запишется здесь:\n{link}\n3. Кабинет → Настройки → Услуги: без цен ссылка не работает.\n\nДелать бота админом канала необязательно (для постов и AI).", en: "🎉 Cabinet is ready.\n\n1. Open the cabinet with the button.\n2. Put this link in your channel or group — clients book there:\n{link}\n3. Cabinet → Settings → Services: the link does nothing until prices are listed.\n\nMaking the bot a channel admin is optional (posts and AI)." },
   open: { uz: "📊 Kabinetni ochish", ru: "📊 Открыть кабинет", en: "📊 Open cabinet" },
   notReady: { uz: "Avval /start bosib sozlashni yakunlang.", ru: "Сначала завершите настройку через /start.", en: "Please finish setup via /start first." },
   connected: { uz: "✅ Ulandi:", ru: "✅ Подключено:", en: "✅ Connected:" },
   connectedNotAdmin: { uz: "⚠️ Bot oddiy a'zo sifatida qo'shildi. Xabarlarni o'qish va tahlil qilish uchun uni <b>admin</b> qiling.", ru: "⚠️ Бот добавлен как обычный участник. Чтобы читать и анализировать сообщения, сделайте его <b>администратором</b>.", en: "⚠️ The bot was added as a regular member. Make it an <b>admin</b> so it can read and analyze messages." },
   disconnected: { uz: "❌ Uzildi:", ru: "❌ Отключено:", en: "❌ Disconnected:" },
-  help: { uz: "/start — sozlash\n/cabinet — kabinetni ochish\n/cabinet_reset — kabinet havolasini yangilash (eski havola ishlamay qoladi)\n\nSohani o'zgartirish: Kabinet → Sozlamalar → «Soha va joyni qayta sozlash».", ru: "/start — настройка\n/cabinet — открыть кабинет\n/cabinet_reset — обновить ссылку на кабинет (старая перестанет работать)\n\nСменить сферу: Кабинет → Настройки → «Перенастроить сферу и площадку».", en: "/start — set up\n/cabinet — open cabinet\n/cabinet_reset — rotate the cabinet link (the old one stops working)\n\nChange your field: Cabinet → Settings → “Reconfigure niche/workspace”." },
+  help: { uz: "/start — sozlash\n/cabinet — kabinetni ochish\n/cabinet_reset — kabinet havolasini yangilash (eski havola ishlamay qoladi)\n/salons — salonlar ro'yxati\n/newsalon — yana bir salon ochish\n\nSohani o'zgartirish: Kabinet → Sozlamalar → «Soha va joyni qayta sozlash».", ru: "/start — настройка\n/cabinet — открыть кабинет\n/cabinet_reset — обновить ссылку на кабинет (старая перестанет работать)\n/salons — список салонов\n/newsalon — открыть ещё один салон\n\nСменить сферу: Кабинет → Настройки → «Перенастроить сферу и площадку».", en: "/start — set up\n/cabinet — open cabinet\n/cabinet_reset — rotate the cabinet link (the old one stops working)\n/salons — list your salons\n/newsalon — open another salon\n\nChange your field: Cabinet → Settings → “Reconfigure niche/workspace”." },
   reset: { uz: "🔄 Kabinet havolasi yangilandi. Eski havola endi ishlamaydi.", ru: "🔄 Ссылка на кабинет обновлена. Старая больше не работает.", en: "🔄 Cabinet link reset. The old link no longer works." },
   redo: {
     uz: "🔧 <b>Qayta sozlash</b>\n\nO'zgaradi: soha, faoliyat joyi va yoqilgan xizmatlar.\nSaqlanadi: kontaktlar, yozuvlar, ulangan chatlar, AI tarixi, eslatmalar, VIP sozlamalari, obuna va kabinet havolasi.\n\nYangi sohada ishlatilmaydigan ro'yxatlar o'chirilmaydi — faqat yashiriladi va sohani qaytarsangiz yana ko'rinadi.",
@@ -24,6 +25,11 @@ const T = {
     en: "🔧 <b>Reconfigure</b>\n\nChanges: your field, workspace type and enabled features.\nKept: contacts, records, connected chats, AI history, reminders, VIP settings, your plan and cabinet link.\n\nLists the new field doesn't use are not deleted — they're hidden and come back if you switch back.",
   },
   updated: { uz: "✅ Kabinet yangilandi.", ru: "✅ Кабинет обновлён.", en: "✅ Cabinet updated." },
+  salons: { uz: "Salonlaringiz. Qaysi biri bilan ishlaysiz?", ru: "Ваши салоны. С каким работать?", en: "Your salons. Which one are you working in?" },
+  newSalon: { uz: "Yangi salon. Sohasini tanlang:", ru: "Новый салон. Выберите сферу:", en: "New salon. Choose its field:" },
+  finishFirst: { uz: "Avval birinchi salonni /start orqali sozlab tugating.", ru: "Сначала закончите настройку первого салона через /start.", en: "Finish setting up your first salon with /start." },
+  salonLimit: { uz: "Bitta akkauntda ko'pi bilan 5 ta salon.", ru: "На одном аккаунте не больше 5 салонов.", en: "One account can have at most 5 salons." },
+  switched: { uz: "Shu salon tanlandi.", ru: "Выбран этот салон.", en: "This salon is now active." },
 } satisfies Record<string, L>;
 
 const t = (k: keyof typeof T, lang: string) => tr(T[k], lang);
@@ -95,24 +101,38 @@ function forwardOrigin(msg: any): { chat: number; message: number } | null {
 async function handleChatMember(sb: Sb, m: any) {
   const status = m.new_chat_member?.status;
   const title = m.chat.title ?? String(m.chat.id);
+  const { resolveActiveOwner, humanChat } = await import("@/lib/account.server");
   if (status === "administrator" || status === "member") {
-    const { data: owner } = await sb.from("tg_owners").select("telegram_id,language").eq("telegram_id", m.from.id).maybeSingle();
+    const ownerId = await resolveActiveOwner(m.from.id);
+    const { data: owner } = await sb.from("tg_owners").select("telegram_id,account_telegram_id,language").eq("telegram_id", ownerId).maybeSingle();
     if (!owner) return;
     await sb.from("tg_chats").upsert({ chat_id: m.chat.id, owner_id: owner.telegram_id, title: m.chat.title ?? null, chat_type: m.chat.type });
     const note = status === "member" ? `\n\n${t("connectedNotAdmin", owner.language)}` : "";
-    await tg("sendMessage", { chat_id: owner.telegram_id, text: `${t("connected", owner.language)} ${escapeHtml(title)}${note}`, parse_mode: "HTML" }).catch((e) => console.error("telegram call failed", e));
+    await tg("sendMessage", { chat_id: humanChat(owner), text: `${t("connected", owner.language)} ${escapeHtml(title)}${note}`, parse_mode: "HTML" }).catch((e) => console.error("telegram call failed", e));
   } else if (status === "left" || status === "kicked") {
     const { data: chat } = await sb.from("tg_chats").select("owner_id").eq("chat_id", m.chat.id).maybeSingle();
     if (!chat) return;
     await sb.from("tg_chats").delete().eq("chat_id", m.chat.id).eq("owner_id", chat.owner_id);
-    const { data: owner } = await sb.from("tg_owners").select("telegram_id,language").eq("telegram_id", chat.owner_id).maybeSingle();
-    if (owner) await tg("sendMessage", { chat_id: owner.telegram_id, text: `${t("disconnected", owner.language)} ${title}` }).catch((e) => console.error("telegram call failed", e));
+    const { data: owner } = await sb.from("tg_owners").select("telegram_id,account_telegram_id,language").eq("telegram_id", chat.owner_id).maybeSingle();
+    if (owner) await tg("sendMessage", { chat_id: humanChat(owner), text: `${t("disconnected", owner.language)} ${title}` }).catch((e) => console.error("telegram call failed", e));
   }
 }
 
 async function handleOnboardingCallback(sb: Sb, q: any, origin: string) {
-  const uid = q.from.id;
+  const actor = q.from.id as number;
   const data: string = q.data ?? "";
+  if (data.startsWith("salon:")) {
+    const salonId = Number(data.slice(6));
+    const { switchSalon } = await import("@/lib/account.server");
+    const salon = Number.isFinite(salonId) ? await switchSalon(actor, salonId) : null;
+    if (!salon) return;
+    const lang = salon.language;
+    await tg("sendMessage", { chat_id: actor, text: `${t("switched", lang)} ${salon.display_name || salon.first_name || ""}`.trim() });
+    if (salon.onboarded_at) return void (await tg("sendMessage", { chat_id: actor, text: "📊", reply_markup: cabinetKb(origin, salon.cabinet_token, lang) }));
+    return void (await tg("sendMessage", { chat_id: actor, text: t("chooseNiche", lang), reply_markup: nicheKb(lang, salon.niche) }));
+  }
+  const { resolveActiveOwner } = await import("@/lib/account.server");
+  const uid = await resolveActiveOwner(actor);
   const { data: owner } = await sb.from("tg_owners").select("*").eq("telegram_id", uid).maybeSingle();
   if (!owner) return;
   const edit = (text: string, reply_markup: unknown) =>
@@ -174,7 +194,13 @@ async function handleOnboardingCallback(sb: Sb, q: any, origin: string) {
     if (!owner.niche || !owner.workspace_type) return void (await edit(t("chooseNiche", lang), nicheKb(lang, owner.niche)));
     const wasReady = !!owner.onboarded_at;
     await sb.from("tg_owners").update({ step: "ready", onboarded_at: owner.onboarded_at ?? now, updated_at: now }).eq("telegram_id", uid);
-    return void (await edit(wasReady ? t("updated", lang) : t("ready", lang), cabinetKb(origin, owner.cabinet_token, lang)));
+    let text = wasReady ? t("updated", lang) : t("ready", lang);
+    if (!wasReady && nichePack(owner.niche).bookingDeposit) {
+      const { deepLink } = await import("@/lib/automation.server");
+      const link = await deepLink(`book_${uid}`);
+      if (link) text = t("readyBook", lang).replaceAll("{link}", link);
+    }
+    return void (await edit(text, cabinetKb(origin, owner.cabinet_token, lang)));
   }
 }
 
@@ -182,28 +208,54 @@ async function handlePrivate(sb: Sb, msg: any, origin: string) {
   const text: string = msg.text ?? "";
   const from = msg.from;
   const payload = text.startsWith("/start ") ? text.slice(7).trim() : "";
-  const cm = /^(shop|vip)_(-?\d+)$/.exec(payload);
-  if (cm) return void (await customerStart(sb, from, cm[1] as "shop" | "vip", Number(cm[2])));
+  const cm = /^(shop|vip|book)_(-?\d+)$/.exec(payload);
+  if (cm) return void (await customerStart(sb, from, cm[1] as "shop" | "vip" | "book", Number(cm[2])));
   if (msg.contact) return void (await customerContact(sb, from, msg.contact));
 
-  const { data: owner } = await sb.from("tg_owners").select("*").eq("telegram_id", from.id).maybeSingle();
+  const { resolveActiveOwner, listSalons, createExtraSalon } = await import("@/lib/account.server");
+  if (text.startsWith("/salons")) {
+    const salons = await listSalons(from.id);
+    const lang = salons[0]?.language ?? (isLang(from.language_code) ? from.language_code : "uz");
+    if (!salons.length) return void (await tg("sendMessage", { chat_id: from.id, text: t("notReady", lang) }));
+    const rows = salons.map((s) => [{ text: `${s.display_name || s.first_name || s.niche || "Salon"}`, callback_data: `salon:${s.telegram_id}` }]);
+    return void (await tg("sendMessage", { chat_id: from.id, text: t("salons", lang), reply_markup: { inline_keyboard: rows } }));
+  }
+  if (text.startsWith("/newsalon")) {
+    const created = await createExtraSalon(from.id, { first_name: from.first_name ?? null, username: from.username ?? null });
+    const lang = created.ok ? created.language : (isLang(from.language_code) ? from.language_code : "uz");
+    if (!created.ok) {
+      const note = created.error === "finish_first" ? t("finishFirst", lang) : created.error === "salon_limit" ? t("salonLimit", lang) : t("help", lang);
+      return void (await tg("sendMessage", { chat_id: from.id, text: note }));
+    }
+    return void (await tg("sendMessage", { chat_id: from.id, text: t("newSalon", lang), reply_markup: nicheKb(lang, null) }));
+  }
+
+  const ownerId = await resolveActiveOwner(from.id);
+  const { data: owner } = await sb.from("tg_owners").select("*").eq("telegram_id", ownerId).maybeSingle();
   const lang = owner?.language ?? (isLang(from.language_code) ? from.language_code : "uz");
   const now = new Date().toISOString();
 
   if (text.startsWith("/start")) {
     if (payload === "redo" && owner) {
-      await sb.from("tg_owners").update({ step: "niche", updated_at: now }).eq("telegram_id", from.id);
+      await sb.from("tg_owners").update({ step: "niche", updated_at: now }).eq("telegram_id", owner.telegram_id);
       await tg("sendMessage", { chat_id: from.id, text: t("redo", lang), parse_mode: "HTML" });
       return void (await tg("sendMessage", { chat_id: from.id, text: t("chooseNiche", lang), reply_markup: nicheKb(lang, owner.niche) }));
     }
     // Upsert only identity fields: /start never wipes niche, modules or data.
-    await sb.from("tg_owners").upsert({ telegram_id: from.id, first_name: from.first_name ?? null, username: from.username ?? null, step: "lang", updated_at: now });
+    await sb.from("tg_owners").upsert({
+      telegram_id: owner?.telegram_id ?? from.id,
+      account_telegram_id: from.id,
+      first_name: from.first_name ?? null,
+      username: from.username ?? null,
+      step: "lang",
+      updated_at: now,
+    });
     return void (await tg("sendMessage", { chat_id: from.id, text: t("chooseLang", lang), reply_markup: langKb(owner?.language) }));
   }
   if (text.startsWith("/cabinet_reset")) {
     if (!owner?.onboarded_at) return void (await tg("sendMessage", { chat_id: from.id, text: t("notReady", lang) }));
     const token = crypto.randomUUID();
-    const { error } = await sb.from("tg_owners").update({ cabinet_token: token, updated_at: now }).eq("telegram_id", from.id);
+    const { error } = await sb.from("tg_owners").update({ cabinet_token: token, updated_at: now }).eq("telegram_id", owner.telegram_id);
     if (error) return void console.error("cabinet_reset failed", error);
     return void (await tg("sendMessage", { chat_id: from.id, text: t("reset", lang), reply_markup: cabinetKb(origin, token, lang) }));
   }
@@ -281,6 +333,10 @@ async function handle(update: any, origin: string) {
     const q = update.callback_query;
     await tg("answerCallbackQuery", { callback_query_id: q.id }).catch((e) => console.error("telegram call failed", e));
     if ((q.data ?? "").startsWith("buy:")) return customerBuy(sb, q.from, q.data.slice(4));
+    if ((q.data ?? "").startsWith("bk:")) {
+      const { handleBookCallback } = await import("@/lib/booking.server");
+      return handleBookCallback(q.from, q.data, userLang(q.from));
+    }
     return handleOnboardingCallback(sb, q, origin);
   }
   const msg = update.message ?? update.edited_message ?? update.channel_post ?? update.edited_channel_post;
@@ -308,8 +364,12 @@ const userLang = (from: any): Lang => (isLang(from?.language_code) ? from.langua
 const fullName = (from: any) => [from.first_name, from.last_name].filter(Boolean).join(" ") + (from.username ? ` (@${from.username})` : "");
 const escapeHtml = (s: string) => s.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[ch]!);
 
-async function customerStart(sb: Sb, from: any, mode: "shop" | "vip", ownerId: number) {
+async function customerStart(sb: Sb, from: any, mode: "shop" | "vip" | "book", ownerId: number) {
   const lang = userLang(from);
+  if (mode === "book") {
+    const { startBooking } = await import("@/lib/booking.server");
+    return startBooking(from, ownerId, lang);
+  }
   const { data: owner } = await sb.from("tg_owners").select("telegram_id,modules,is_demo").eq("telegram_id", ownerId).maybeSingle();
   if (!owner || owner.is_demo) return;
   await sb.from("bot_customers").upsert({ tg_user_id: from.id, owner_id: ownerId, mode, pending: {}, updated_at: new Date().toISOString() });
@@ -347,10 +407,12 @@ async function customerBuy(sb: Sb, from: any, recordId: string) {
 async function customerContact(sb: Sb, from: any, contact: any) {
   const lang = userLang(from);
   if (Number(contact.user_id) !== Number(from.id)) return;
+  const { finishBooking } = await import("@/lib/booking.server");
+  const phone = String(contact.phone_number ?? "").slice(0, 30);
+  if (await finishBooking(from, phone, lang)) return;
   const { data: cust } = await sb.from("bot_customers").select("*").eq("tg_user_id", from.id).maybeSingle();
   const pending = (cust?.pending ?? {}) as { record_id?: string; title?: string; amount?: number };
   if (!cust?.owner_id || cust.mode !== "shop" || !pending.record_id) return;
-  const phone = String(contact.phone_number ?? "").slice(0, 30);
   const { error } = await sb.from("records").insert({ owner_id: cust.owner_id, title: String(pending.title ?? "").slice(0, 160), client: `${fullName(from)} ${phone}`.slice(0, 120), amount: Number(pending.amount) || 0, status: "new", data_type: "record" });
   if (error) return void console.error("shop order failed", error);
   await sb.from("bot_customers").update({ pending: {} }).eq("tg_user_id", from.id);

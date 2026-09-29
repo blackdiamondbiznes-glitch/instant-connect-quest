@@ -14,6 +14,186 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_session: {
+        Row: {
+          active_owner_id: number
+          telegram_id: number
+        }
+        Insert: {
+          active_owner_id: number
+          telegram_id: number
+        }
+        Update: {
+          active_owner_id?: number
+          telegram_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_session_active_owner_id_fkey"
+            columns: ["active_owner_id"]
+            isOneToOne: false
+            referencedRelation: "tg_owners"
+            referencedColumns: ["telegram_id"]
+          },
+        ]
+      }
+      booking_deposits: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          owner_id: number
+          paid_at: string | null
+          payme_cancel_time: number | null
+          payme_create_time: number | null
+          payme_perform_time: number | null
+          payme_reason: number | null
+          payme_state: number | null
+          provider: string | null
+          provider_tx: string | null
+          record_id: string | null
+          seq: number
+          status: string
+          tg_user_id: number
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          owner_id: number
+          paid_at?: string | null
+          payme_cancel_time?: number | null
+          payme_create_time?: number | null
+          payme_perform_time?: number | null
+          payme_reason?: number | null
+          payme_state?: number | null
+          provider?: string | null
+          provider_tx?: string | null
+          record_id?: string | null
+          seq?: number
+          status?: string
+          tg_user_id: number
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          owner_id?: number
+          paid_at?: string | null
+          payme_cancel_time?: number | null
+          payme_create_time?: number | null
+          payme_perform_time?: number | null
+          payme_reason?: number | null
+          payme_state?: number | null
+          provider?: string | null
+          provider_tx?: string | null
+          record_id?: string | null
+          seq?: number
+          status?: string
+          tg_user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_deposits_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "tg_owners"
+            referencedColumns: ["telegram_id"]
+          },
+          {
+            foreignKeyName: "booking_deposits_record_id_fkey"
+            columns: ["record_id"]
+            isOneToOne: false
+            referencedRelation: "records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      booking_services: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          owner_id: number
+          price: number
+          title: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          owner_id: number
+          price?: number
+          title: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          owner_id?: number
+          price?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_services_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "tg_owners"
+            referencedColumns: ["telegram_id"]
+          },
+        ]
+      }
+      booking_settings: {
+        Row: {
+          click_merchant_id: string | null
+          click_secret_key: string | null
+          click_service_id: string | null
+          close_time: string
+          closed_days: string
+          deposit_amount: number
+          open_time: string
+          owner_id: number
+          payme_key: string | null
+          payme_merchant_id: string | null
+          slot_minutes: number
+        }
+        Insert: {
+          click_merchant_id?: string | null
+          click_secret_key?: string | null
+          click_service_id?: string | null
+          close_time?: string
+          closed_days?: string
+          deposit_amount?: number
+          open_time?: string
+          owner_id: number
+          payme_key?: string | null
+          payme_merchant_id?: string | null
+          slot_minutes?: number
+        }
+        Update: {
+          click_merchant_id?: string | null
+          click_secret_key?: string | null
+          click_service_id?: string | null
+          close_time?: string
+          closed_days?: string
+          deposit_amount?: number
+          open_time?: string
+          owner_id?: number
+          payme_key?: string | null
+          payme_merchant_id?: string | null
+          slot_minutes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_settings_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: true
+            referencedRelation: "tg_owners"
+            referencedColumns: ["telegram_id"]
+          },
+        ]
+      }
       bot_customers: {
         Row: {
           mode: string | null
@@ -222,6 +402,71 @@ export type Database = {
           },
         ]
       }
+      platform_orders: {
+        Row: {
+          amount: number
+          created_at: string
+          days: number
+          id: string
+          owner_id: number
+          paid_at: string | null
+          payme_cancel_time: number | null
+          payme_create_time: number | null
+          payme_perform_time: number | null
+          payme_reason: number | null
+          payme_state: number | null
+          provider: string | null
+          provider_tx: string | null
+          seq: number
+          status: string
+          tier: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          days: number
+          id?: string
+          owner_id: number
+          paid_at?: string | null
+          payme_cancel_time?: number | null
+          payme_create_time?: number | null
+          payme_perform_time?: number | null
+          payme_reason?: number | null
+          payme_state?: number | null
+          provider?: string | null
+          provider_tx?: string | null
+          seq?: number
+          status?: string
+          tier: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          days?: number
+          id?: string
+          owner_id?: number
+          paid_at?: string | null
+          payme_cancel_time?: number | null
+          payme_create_time?: number | null
+          payme_perform_time?: number | null
+          payme_reason?: number | null
+          payme_state?: number | null
+          provider?: string | null
+          provider_tx?: string | null
+          seq?: number
+          status?: string
+          tier?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_orders_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "tg_owners"
+            referencedColumns: ["telegram_id"]
+          },
+        ]
+      }
       question_clusters: {
         Row: {
           answer: string | null
@@ -268,8 +513,11 @@ export type Database = {
           amount: number
           client: string | null
           created_at: string
+          customer_tg_id: number | null
           data_type: string
+          deposit_paid: boolean
           due_date: string | null
+          due_time: string | null
           id: string
           owner_id: number
           status: string
@@ -279,8 +527,11 @@ export type Database = {
           amount?: number
           client?: string | null
           created_at?: string
+          customer_tg_id?: number | null
           data_type?: string
+          deposit_paid?: boolean
           due_date?: string | null
+          due_time?: string | null
           id?: string
           owner_id: number
           status?: string
@@ -290,8 +541,11 @@ export type Database = {
           amount?: number
           client?: string | null
           created_at?: string
+          customer_tg_id?: number | null
           data_type?: string
+          deposit_paid?: boolean
           due_date?: string | null
+          due_time?: string | null
           id?: string
           owner_id?: number
           status?: string
@@ -313,8 +567,10 @@ export type Database = {
           chat_id: number | null
           created_at: string
           id: string
+          kind: string
           last_sent_at: string | null
           owner_id: number
+          record_id: string | null
           repeat: string
           send_at: string
           text: string
@@ -324,8 +580,10 @@ export type Database = {
           chat_id?: number | null
           created_at?: string
           id?: string
+          kind?: string
           last_sent_at?: string | null
           owner_id: number
+          record_id?: string | null
           repeat?: string
           send_at: string
           text: string
@@ -335,8 +593,10 @@ export type Database = {
           chat_id?: number | null
           created_at?: string
           id?: string
+          kind?: string
           last_sent_at?: string | null
           owner_id?: number
+          record_id?: string | null
           repeat?: string
           send_at?: string
           text?: string
@@ -348,6 +608,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tg_owners"
             referencedColumns: ["telegram_id"]
+          },
+          {
+            foreignKeyName: "reminders_record_id_fkey"
+            columns: ["record_id"]
+            isOneToOne: false
+            referencedRelation: "records"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -444,6 +711,7 @@ export type Database = {
       }
       tg_owners: {
         Row: {
+          account_telegram_id: number | null
           analysis_day: string | null
           analysis_runs: number
           cabinet_token: string
@@ -469,6 +737,7 @@ export type Database = {
           workspace_type: string | null
         }
         Insert: {
+          account_telegram_id?: number | null
           analysis_day?: string | null
           analysis_runs?: number
           cabinet_token?: string
@@ -494,6 +763,7 @@ export type Database = {
           workspace_type?: string | null
         }
         Update: {
+          account_telegram_id?: number | null
           analysis_day?: string | null
           analysis_runs?: number
           cabinet_token?: string

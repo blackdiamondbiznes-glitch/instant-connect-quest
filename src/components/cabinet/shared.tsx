@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { getCabinet } from "@/lib/cabinet.functions";
+import { Input } from "@/components/ui/input";
 import { isUKey, type U } from "./i18n";
 
 export type D = Awaited<ReturnType<typeof getCabinet>>;
@@ -37,6 +39,25 @@ export const toneCls = (tone?: string) =>
   : "bg-secondary text-secondary-foreground";
 
 export const fmt = (n: number) => new Intl.NumberFormat("ru-RU").format(Math.round(n));
+
+/** Digits only. A stored 0 shows as empty so typing does not keep a leading zero. */
+export function MoneyInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const [text, setText] = useState(value > 0 ? String(Math.round(value)) : "");
+  useEffect(() => { setText(value > 0 ? String(Math.round(value)) : ""); }, [value]);
+  return (
+    <Input
+      inputMode="numeric"
+      enterKeyHint="done"
+      placeholder="0"
+      value={text}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/\D/g, "").replace(/^0+/, "");
+        setText(digits);
+        onChange(digits ? Number(digits) : 0);
+      }}
+    />
+  );
+}
 
 export const Field = ({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) => (
   <label className="block space-y-1">

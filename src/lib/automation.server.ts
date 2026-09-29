@@ -30,7 +30,12 @@ export async function deepLink(payload: string) {
 
 export async function notifyOwner(ownerId: number, text: string) {
   if (ownerId < 0) return; // demo owners
-  await tg("sendMessage", { chat_id: ownerId, text, parse_mode: "HTML" }).catch((e) => console.error("notify owner failed", e));
+  const { data } = await supabaseAdmin.from("tg_owners").select("telegram_id, account_telegram_id, is_demo").eq("telegram_id", ownerId).maybeSingle();
+  if (data?.is_demo) return;
+  const { humanChat } = await import("./account.server");
+  const chat = humanChat({ telegram_id: ownerId, account_telegram_id: data?.account_telegram_id ?? null });
+  if (chat < 0) return;
+  await tg("sendMessage", { chat_id: chat, text, parse_mode: "HTML" }).catch((e) => console.error("notify owner failed", e));
 }
 
 /** Sends text to every connected chat of the owner. */
@@ -60,6 +65,7 @@ export async function runDueReminders() {
       ? [{ chat_id: r.chat_id }]
       : ((await supabaseAdmin.from("tg_chats").select("chat_id").eq("owner_id", r.owner_id)).data ?? []);
     for (const t of targets) {
+      if (t.chat_id < 0) continue; // demo owners
       await tg("sendMessage", { chat_id: t.chat_id, text: r.text }).then(() => count++).catch((e) => console.error("reminder failed", e));
     }
     const next = new Date(r.send_at);
@@ -206,3 +212,57 @@ export async function detectGroupOrder(p: { ownerId: number; chatId: number; mes
 }
 
 export const escapeHtml = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
+
+const fill = (t: string, vars: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
+
+type BookingRow = { id: string; title: string; client: string | null; status: string; due_date: string | null; due_time: string | null; deposit_paid: boolean };
+
+/**
+ * Creates/refreshes 24h and 2h owner-DM reminders for a booked appointment.
+ * Relies on the hourly Cloud Job POST /api/public/hooks/tick (LOVABLE_CRON_SECRET).
+ * 2h reminders need due_time; without a clock time only the 24h reminder is created (noon Tashkent).
+ */
+export async function syncAppointmentReminders(owner: { telegram_id: number; language: string; niche: string | null }, rec: BookingRow) {
+  const { nichePack, tr } = await import("./niches");
+  const { appointmentAt, hasClockTime } = await import("./config");
+  const templates = nichePack(owner.niche).reminderTemplates;
+  if (!templates.length) return;
+
+  await supabaseAdmin.from("reminders").delete().eq("owner_id", owner.telegram_id).eq("record_id", rec.id).in("kind", ["appt_24h", "appt_2h"]);
+  if (rec.status !== "booked" || !rec.due_date) return;
+
+  const when = appointmentAt(rec.due_date, rec.due_time);
+  const lang = owner.language;
+  const yes = tr({ uz: "ha", ru: "да", en: "yes" }, lang);
+  const no = tr({ uz: "yo'q", ru: "нет", en: "no" }, lang);
+  const vars = {
+    client: rec.client ?? "",
+    title: rec.title,
+    date: rec.due_date,
+    time: rec.due_time || "12:00",
+    deposit: rec.deposit_paid ? yes : no,
+  };
+  const { data: who } = await supabaseAdmin.from("tg_owners").select("account_telegram_id").eq("telegram_id", owner.telegram_id).maybeSingle();
+  const { humanChat } = await import("./account.server");
+  const chat = humanChat({ telegram_id: owner.telegram_id, account_telegram_id: who?.account_telegram_id ?? null });
+  const now = Date.now();
+  const rows = templates.flatMap((tpl) => {
+    if (tpl.id === "appt_2h" && !hasClockTime(rec.due_time)) return [];
+    const sendAt = new Date(when.getTime() - tpl.hoursBefore * 3600000);
+    if (sendAt.getTime() <= now) return [];
+    return [{
+      owner_id: owner.telegram_id,
+      chat_id: chat,
+      text: fill(tr(tpl.text, lang), vars).slice(0, 3500),
+      send_at: sendAt.toISOString(),
+      repeat: "none",
+      active: true,
+      kind: tpl.id,
+      record_id: rec.id,
+    }];
+  });
+  if (rows.length) {
+    const { error } = await supabaseAdmin.from("reminders").insert(rows);
+    if (error) console.error("appointment reminders failed", error);
+  }
+}

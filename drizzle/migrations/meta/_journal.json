@@ -43,6 +43,27 @@
       "when": 1790500000000,
       "tag": "0005_spec_alignment_content_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790600000000,
+      "tag": "0006_beauty_niche_pack",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790700000000,
+      "tag": "0007_beauty_booking_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790800000000,
+      "tag": "0008_salon_hours_pay_accounts",
+      "breakpoints": true
     }
   ]
 }

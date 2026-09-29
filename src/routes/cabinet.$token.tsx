@@ -32,7 +32,10 @@ function Cabinet() {
   const fetchCab = useServerFn(getCabinet);
   const q = useQuery({ queryKey: ["cab", token], queryFn: () => fetchCab({ data: { token, initData: tgInit() } }), retry: false });
   const [tab, setTab] = useState<Tab>("home");
+  const [settingsStart, setSettingsStart] = useState<"main" | "services">("main");
   const [recordSection, setRecordSection] = useState<RecordDataType | undefined>();
+  const [recordFilter, setRecordFilter] = useState<string | undefined>();
+  const [startAdd, setStartAdd] = useState(false);
 
   useEffect(() => {
     const wa = (window as unknown as { Telegram?: { WebApp?: { ready?: () => void; expand?: () => void } } }).Telegram?.WebApp;
@@ -81,12 +84,17 @@ function Cabinet() {
 
       <main className="px-5">
         {current === "home" && (
-          <Dashboard d={d} u={u} lang={lang} sections={sections} goContacts={() => go("contacts")} goRecords={(s) => { setRecordSection(s); go("records"); }} goAi={() => go("ai")} />
+          <Dashboard d={d} u={u} lang={lang} token={token} sections={sections}
+            goContacts={() => go("contacts")}
+            goRecords={(s, f) => { setRecordSection(s); setRecordFilter(f); setStartAdd(false); go("records"); }}
+            goAi={() => go("ai")}
+            goAddBooking={() => { setRecordSection("booking"); setRecordFilter("today"); setStartAdd(true); go("records"); }}
+            goServices={() => { setSettingsStart("services"); go("settings"); }} />
         )}
         {current === "contacts" && <ListScreen key="contacts" kind="contacts" d={d} u={u} lang={lang} token={token} sections={sections} />}
-        {current === "records" && <ListScreen key={`records:${recordSection ?? ""}`} kind="records" initialSection={recordSection} d={d} u={u} lang={lang} token={token} sections={sections} />}
+        {current === "records" && <ListScreen key={`records:${recordSection ?? ""}:${recordFilter ?? ""}:${startAdd}`} kind="records" initialSection={recordSection} initialFilter={recordFilter} startAdd={startAdd} d={d} u={u} lang={lang} token={token} sections={sections} />}
         {current === "ai" && <AiScreen d={d} u={u} lang={lang} token={token} />}
-        {current === "settings" && <SettingsScreen d={d} u={u} lang={lang} token={token} />}
+        {current === "settings" && <SettingsScreen key={settingsStart} d={d} u={u} lang={lang} token={token} start={settingsStart} />}
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
@@ -94,7 +102,7 @@ function Cabinet() {
           {tabs.map((t) => {
             const active = current === t.id;
             return (
-              <button key={t.id} onClick={() => go(t.id)} aria-current={active ? "page" : undefined}
+              <button key={t.id} onClick={() => { if (t.id === "settings") setSettingsStart("main"); go(t.id); }} aria-current={active ? "page" : undefined}
                 className={cn("flex min-w-0 flex-1 flex-col items-center gap-1 py-2 text-[11px]", active ? "font-bold text-foreground" : "font-medium text-muted-foreground")}>
                 <span className={cn("flex h-8 w-14 items-center justify-center rounded-full transition-colors", active ? "bg-primary text-primary-foreground shadow-sm" : "")}>
                   <t.icon className="h-5 w-5" strokeWidth={active ? 2.5 : 2} />

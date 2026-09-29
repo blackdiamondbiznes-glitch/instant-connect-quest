@@ -2,6 +2,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { tg } from "./telegram.server";
 import { consumeQuota, effectiveTier, planExpired, refundQuota, type Owner } from "./cabinet.server";
+import { humanChat } from "./account.server";
 import { getNiche, tr, type L } from "./niches";
 import {
   CONTENT_CADENCE, CONTENT_MAX_POST_CHARS, CONTENT_MAX_SUGGESTIONS_PER_DAY, CONTENT_OWNERS_PER_TICK,
@@ -124,7 +125,7 @@ export async function suggest(owner: Owner, kind: "post" | "fact", opts: { respe
   // Auto-publish is opt-in only.
   if (owner.content_auto_publish) {
     const pub = await publish(owner, row.id, target);
-    if (pub.ok) await tg("sendMessage", { chat_id: owner.telegram_id, text: `${tx("autoPublished", owner.language)}\n\n${gen.text}` }).catch((e) => console.error("notify failed", e));
+    if (pub.ok) await tg("sendMessage", { chat_id: humanChat(owner), text: `${tx("autoPublished", owner.language)}\n\n${gen.text}` }).catch((e) => console.error("notify failed", e));
   } else {
     await notifyWithCabinet(owner, tx("newSuggestion", owner.language));
   }
@@ -134,7 +135,7 @@ export async function suggest(owner: Owner, kind: "post" | "fact", opts: { respe
 async function notifyWithCabinet(owner: Owner, text: string) {
   const { appUrl } = await import("./telegram.server");
   const open = tr({ uz: "📊 Kabinetni ochish", ru: "📊 Открыть кабинет", en: "📊 Open cabinet" }, owner.language);
-  await tg("sendMessage", { chat_id: owner.telegram_id, text, reply_markup: { inline_keyboard: [[{ text: open, web_app: { url: `${appUrl()}/cabinet/${owner.cabinet_token}` } }]] } })
+  await tg("sendMessage", { chat_id: humanChat(owner), text, reply_markup: { inline_keyboard: [[{ text: open, web_app: { url: `${appUrl()}/cabinet/${owner.cabinet_token}` } }]] } })
     .catch((e) => console.error("notify failed", e));
 }
 
@@ -199,7 +200,7 @@ async function perfDigest(owner: Owner, quota: Quota): Promise<boolean> {
   const bestLine = `⭐ "${best.text.replace(/\s+/g, " ").slice(0, 80)}" — ❤️ ${best.reactions} · 💬 ${best.replies}`;
   const text = [stats, bestLine, perf.lowSignal ? tx("lowSignal", owner.language) : advice].filter(Boolean).join("\n\n");
   await supabaseAdmin.from("content_suggestions").insert({ owner_id: owner.telegram_id, kind: "perf_digest", text, status: "info", meta: { posts: perf.posts.length, reactions: perf.reactions, replies: perf.replies, low_signal: perf.lowSignal } });
-  await tg("sendMessage", { chat_id: owner.telegram_id, text: `${tx("perfTitle", owner.language)}\n\n${text}` }).catch((e) => console.error("digest send failed", e));
+  await tg("sendMessage", { chat_id: humanChat(owner), text: `${tx("perfTitle", owner.language)}\n\n${text}` }).catch((e) => console.error("digest send failed", e));
   return true;
 }
 

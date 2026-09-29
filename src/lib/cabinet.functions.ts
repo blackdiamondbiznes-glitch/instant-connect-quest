@@ -1,14 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireOwner, mutationOwner, planExpired, effectiveTier, consumeQuota, refundQuota, supabaseAdmin, type Owner } from "./cabinet.server";
-import { enabledDataTypes, getNiche, isMemberType, offeredModules, statusesFor, type DataType } from "./niches";
-import { ANALYSIS_RUNS_PER_DAY, FOOTER_REMOVABLE_TIERS } from "./config";
+import { enabledDataTypes, getNiche, isMemberType, nichePack, offeredModules, statusesFor, type DataType } from "./niches";
+import { ANALYSIS_RUNS_PER_DAY, DEFAULT_CLOSE, DEFAULT_OPEN, DEFAULT_SLOT_MINUTES, FOOTER_REMOVABLE_TIERS, PLAN_PERIOD_DAYS, PLAN_PRICE_UZS } from "./config";
 
 const Tok = z.object({ token: z.string().uuid(), initData: z.string().max(4096).optional().nullable() });
 const RecordType = z.enum(["record", "booking", "stock", "waybill"]);
 
 export type Member = { id: string; owner_id: number; name: string; phone: string | null; status: string; amount: number; note: string | null; created_at: string };
-export type RecordRow = { id: string; owner_id: number; title: string; client: string | null; status: string; amount: number; due_date: string | null; data_type: string; created_at: string };
+export type RecordRow = { id: string; owner_id: number; title: string; client: string | null; status: string; amount: number; due_date: string | null; due_time: string | null; deposit_paid: boolean; data_type: string; created_at: string };
 export type Topic = { topic: string; count: number; sentiment: "positive" | "neutral" | "negative" };
 export type Insight = { id: string; positive: number; neutral: number; negative: number; topics: Topic[]; positive_drivers: string[]; negative_drivers: string[]; summary: string | null; message_count: number; created_at: string };
 export type ClusterSource = { chat_id: number; message_id: number; from: string | null; text: string };
@@ -16,6 +16,11 @@ export type Cluster = { id: string; question: string; ask_count: number; sources
 export type Chat = { chat_id: number; title: string | null; chat_type: string | null };
 export type Suggestion = { id: string; kind: "post" | "fact" | "perf_digest" | "question_digest"; text: string; status: string; chat_id: number | null; meta: Record<string, string | number | boolean | null>; created_at: string; published_at: string | null };
 export type PostSignal = { posts: number; reactions: number; replies: number };
+export type ServiceRow = { id: string; title: string; price: number };
+export type Schedule = {
+  open: string; close: string; step: number; closed: number[]; deposit: number;
+  clickReady: boolean; paymeReady: boolean; clickService: string; clickMerchant: string; paymeMerchant: string;
+};
 
 const mods = (o: Owner) => o.modules as string[];
 const has = (o: Owner, t: DataType) => enabledDataTypes(mods(o)).has(t);
@@ -42,19 +47,44 @@ export const getCabinet = createServerFn({ method: "POST" })
     const postRows = (posts.data ?? []) as { reactions: number; replies: number }[];
     const endsAt = owner.plan_status === "active" ? owner.subscription_ends_at : owner.trial_ends_at;
     const tier = effectiveTier(owner);
+    const booking = nichePack(owner.niche).bookingDeposit;
     let botUsername: string | null = null;
+    let bookLink: string | null = null;
     if (!owner.is_demo) {
-      const { botUsername: getBot } = await import("./automation.server");
+      const { botUsername: getBot, deepLink } = await import("./automation.server");
       botUsername = await getBot();
+      if (booking) bookLink = await deepLink(`book_${id}`);
     }
+    const { data: serviceRows } = booking
+      ? await supabaseAdmin.from("booking_services").select("id,title,price").eq("owner_id", id).eq("active", true).order("title")
+      : { data: [] as { id: string; title: string; price: number }[] };
+    const { data: hours } = booking
+      ? await supabaseAdmin.from("booking_settings").select("open_time,close_time,slot_minutes,closed_days,deposit_amount,click_service_id,click_merchant_id,click_secret_key,payme_merchant_id,payme_key").eq("owner_id", id).maybeSingle()
+      : { data: null };
+    const schedule: Schedule | null = booking ? {
+      open: hours?.open_time ?? DEFAULT_OPEN,
+      close: hours?.close_time ?? DEFAULT_CLOSE,
+      step: hours?.slot_minutes ?? DEFAULT_SLOT_MINUTES,
+      closed: (hours?.closed_days ?? "").split(",").filter(Boolean).map((x) => Number(x)).filter((n) => n >= 0 && n <= 6),
+      deposit: Math.max(0, Number(hours?.deposit_amount) || 0),
+      clickReady: !!(hours?.click_service_id && hours?.click_merchant_id && hours?.click_secret_key),
+      paymeReady: !!(hours?.payme_merchant_id && hours?.payme_key),
+      clickService: hours?.click_service_id ?? "",
+      clickMerchant: hours?.click_merchant_id ?? "",
+      paymeMerchant: hours?.payme_merchant_id ?? "",
+    } : null;
     return {
       owner: {
+        telegram_id: id,
         first_name: owner.first_name, display_name: owner.display_name, language: owner.language, niche: owner.niche,
         workspace_type: owner.workspace_type, modules: m, is_demo: owner.is_demo,
         content_auto_publish: owner.content_auto_publish, content_footer_disabled: owner.content_footer_disabled, content_chat_id: owner.content_chat_id,
       },
-      plan: { status: owner.plan_status, tier, ends_at: endsAt as string | null, expired: planExpired(owner), footer_removable: FOOTER_REMOVABLE_TIERS.includes(tier) },
+      plan: { status: owner.plan_status, tier, ends_at: endsAt as string | null, expired: planExpired(owner), footer_removable: FOOTER_REMOVABLE_TIERS.includes(tier), prices: PLAN_PRICE_UZS, days: PLAN_PERIOD_DAYS },
       botUsername,
+      bookLink,
+      services: (serviceRows ?? []).map((s) => ({ id: s.id, title: s.title, price: Number(s.price) })) as ServiceRow[],
+      schedule,
       members: (members.data ?? []) as Member[],
       records: (records.data ?? []) as RecordRow[],
       chats: (chats.data ?? []) as Chat[],
@@ -100,6 +130,8 @@ const RecordIn = Tok.extend({
   status: z.string().max(30),
   amount: z.number().min(0).max(1e12),
   due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable().or(z.literal("")),
+  due_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional().nullable().or(z.literal("")),
+  deposit_paid: z.boolean().optional(),
   data_type: RecordType.default("record"),
 });
 
@@ -111,13 +143,154 @@ export const saveRecord = createServerFn({ method: "POST" })
     const owner = r.owner;
     if (!has(owner, data.data_type)) return { ok: false as const, error: "module_disabled" as const };
     if (!statusesFor(getNiche(owner.niche), data.data_type).includes(data.status)) return { ok: false as const, error: "invalid_status" as const };
-    const row = { owner_id: owner.telegram_id, title: data.title, client: data.client ?? null, status: data.status, amount: data.amount, due_date: data.due_date || null, data_type: data.data_type };
+    const dueTime = data.data_type === "booking" && data.due_time ? data.due_time : null;
+    const deposit = data.data_type === "booking" && !!data.deposit_paid;
+    const row = {
+      owner_id: owner.telegram_id, title: data.title, client: data.client ?? null, status: data.status,
+      amount: data.amount, due_date: data.due_date || null, due_time: dueTime, deposit_paid: deposit, data_type: data.data_type,
+    };
     const q = data.id
-      ? supabaseAdmin.from("records").update(row).eq("id", data.id).eq("owner_id", owner.telegram_id)
-      : supabaseAdmin.from("records").insert(row);
+      ? supabaseAdmin.from("records").update(row).eq("id", data.id).eq("owner_id", owner.telegram_id).select("id,title,client,status,due_date,due_time,deposit_paid").maybeSingle()
+      : supabaseAdmin.from("records").insert(row).select("id,title,client,status,due_date,due_time,deposit_paid").single();
+    const { data: saved, error } = await q;
+    if (error) throw new Error(error.message);
+    if (data.data_type === "booking" && saved) {
+      const { syncAppointmentReminders } = await import("./automation.server");
+      await syncAppointmentReminders(owner, saved);
+    }
+    return { ok: true as const };
+  });
+
+export const setRecordStatus = createServerFn({ method: "POST" })
+  .inputValidator((d) => Tok.extend({ id: z.string().uuid(), status: z.string().max(30) }).parse(d))
+  .handler(async ({ data }) => {
+    const r = await mutationOwner(data.token, data.initData);
+    if (r.error) return { ok: false as const, error: r.error };
+    const owner = r.owner;
+    if (!statusesFor(getNiche(owner.niche), "booking").includes(data.status)) return { ok: false as const, error: "invalid_status" as const };
+    const { data: saved, error } = await supabaseAdmin.from("records").update({ status: data.status }).eq("id", data.id).eq("owner_id", owner.telegram_id).eq("data_type", "booking").select("id,title,client,status,due_date,due_time,deposit_paid").maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!saved) return { ok: false as const, error: "not_found" as const };
+    const { syncAppointmentReminders } = await import("./automation.server");
+    await syncAppointmentReminders(owner, saved);
+    return { ok: true as const };
+  });
+
+export const saveService = createServerFn({ method: "POST" })
+  .inputValidator((d) => Tok.extend({ id: z.string().uuid().optional(), title: z.string().trim().min(1).max(80), price: z.number().min(0).max(1e12) }).parse(d))
+  .handler(async ({ data }) => {
+    const r = await mutationOwner(data.token, data.initData);
+    if (r.error) return { ok: false as const, error: r.error };
+    if (!nichePack(r.owner.niche).bookingDeposit) return { ok: false as const, error: "module_disabled" as const };
+    const row = { owner_id: r.owner.telegram_id, title: data.title, price: data.price, active: true };
+    const q = data.id
+      ? supabaseAdmin.from("booking_services").update({ title: data.title, price: data.price }).eq("id", data.id).eq("owner_id", r.owner.telegram_id)
+      : supabaseAdmin.from("booking_services").insert(row);
     const { error } = await q;
     if (error) throw new Error(error.message);
     return { ok: true as const };
+  });
+
+export const deleteService = createServerFn({ method: "POST" })
+  .inputValidator((d) => Tok.extend({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const r = await mutationOwner(data.token, data.initData);
+    if (r.error) return { ok: false as const, error: r.error };
+    const { error } = await supabaseAdmin.from("booking_services").delete().eq("id", data.id).eq("owner_id", r.owner.telegram_id);
+    if (error) throw new Error(error.message);
+    return { ok: true as const };
+  });
+
+/** Posts the service menu and a booking button into every chat where the bot is a member. */
+export const postBookingCard = createServerFn({ method: "POST" })
+  .inputValidator((d) => Tok.parse(d))
+  .handler(async ({ data }) => {
+    const r = await mutationOwner(data.token, data.initData);
+    if (r.error) return { ok: false as const, error: r.error };
+    if (!nichePack(r.owner.niche).bookingDeposit) return { ok: false as const, error: "module_disabled" as const };
+    const ownerId = r.owner.telegram_id;
+    const { data: services } = await supabaseAdmin.from("booking_services").select("title,price").eq("owner_id", ownerId).eq("active", true).order("title").limit(30);
+    if (!services?.length) return { ok: false as const, error: "bookLinkEmpty" as const };
+    const { data: chats } = await supabaseAdmin.from("tg_chats").select("chat_id").eq("owner_id", ownerId);
+    if (!chats?.length) return { ok: false as const, error: "no_chats" as const };
+    const { deepLink, escapeHtml } = await import("./automation.server");
+    const { tg } = await import("./telegram.server");
+    const { tr } = await import("./niches");
+    const link = await deepLink(`book_${ownerId}`);
+    if (!link) return { ok: false as const, error: "send_failed" as const };
+    const lang = r.owner.language;
+    const head = tr({ uz: "📅 Yozilish", ru: "📅 Запись", en: "📅 Book" }, lang);
+    const btn = tr({ uz: "Yozilish", ru: "Записаться", en: "Book" }, lang);
+    const lines = services.map((s) => `• ${escapeHtml(s.title)} — ${Number(s.price).toLocaleString("ru-RU")}`);
+    const text = `<b>${head}</b>\n\n${lines.join("\n")}`;
+    let sent = 0;
+    for (const c of chats) {
+      try {
+        await tg("sendMessage", { chat_id: c.chat_id, text, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: btn, url: link }]] } });
+        sent++;
+      } catch (e) {
+        console.error("book card failed", e);
+      }
+    }
+    if (!sent) return { ok: false as const, error: "send_failed" as const };
+    return { ok: true as const };
+  });
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+
+export const saveBookingSettings = createServerFn({ method: "POST" })
+  .inputValidator((d) => Tok.extend({
+    open: z.string().regex(HHMM),
+    close: z.string().regex(HHMM),
+    step: z.union([z.literal(30), z.literal(60), z.literal(90)]),
+    closed: z.array(z.number().int().min(0).max(6)).max(7),
+    deposit: z.number().min(0).max(1e12),
+    clickService: z.string().max(40),
+    clickMerchant: z.string().max(40),
+    clickSecret: z.string().max(200),
+    paymeMerchant: z.string().max(80),
+    paymeKey: z.string().max(200),
+  }).parse(d))
+  .handler(async ({ data }) => {
+    const r = await mutationOwner(data.token, data.initData);
+    if (r.error) return { ok: false as const, error: r.error };
+    if (!nichePack(r.owner.niche).bookingDeposit) return { ok: false as const, error: "module_disabled" as const };
+    const open = data.open.slice(0, 5);
+    const close = data.close.slice(0, 5);
+    const { clockSlots } = await import("./config");
+    if (!clockSlots(open, close, data.step).length) return { ok: false as const, error: "invalid_status" as const };
+    const id = r.owner.telegram_id;
+    const row: {
+      owner_id: number; open_time: string; close_time: string; slot_minutes: number; closed_days: string; deposit_amount: number;
+      click_service_id: string | null; click_merchant_id: string | null; payme_merchant_id: string | null;
+      click_secret_key?: string; payme_key?: string;
+    } = {
+      owner_id: id,
+      open_time: open,
+      close_time: close,
+      slot_minutes: data.step,
+      closed_days: [...new Set(data.closed)].sort().join(","),
+      deposit_amount: data.deposit,
+      click_service_id: data.clickService.trim() || null,
+      click_merchant_id: data.clickMerchant.trim() || null,
+      payme_merchant_id: data.paymeMerchant.trim() || null,
+    };
+    if (data.clickSecret.trim()) row.click_secret_key = data.clickSecret.trim();
+    if (data.paymeKey.trim()) row.payme_key = data.paymeKey.trim();
+    const { error } = await supabaseAdmin.from("booking_settings").upsert(row);
+    if (error) throw new Error(error.message);
+    return { ok: true as const };
+  });
+
+export const startPlanCheckout = createServerFn({ method: "POST" })
+  .inputValidator((d) => Tok.extend({ tier: z.enum(["start", "pro"]) }).parse(d))
+  .handler(async ({ data }) => {
+    const pre = await requireOwner({ token: data.token, initData: data.initData });
+    if (pre.is_demo) return { ok: false as const, error: "demo_readonly" as const };
+    const { createPlatformOrder } = await import("./platform.server");
+    const order = await createPlatformOrder(pre.telegram_id, data.tier);
+    if (!order.ok) return order;
+    return { ok: true as const, links: order.links };
   });
 
 export const deleteItem = createServerFn({ method: "POST" })

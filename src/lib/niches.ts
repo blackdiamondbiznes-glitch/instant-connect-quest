@@ -66,6 +66,63 @@ export const RECORD_TYPES: RecordDataType[] = ["record", "booking", "stock", "wa
 export const STOCK_STATUSES = ["in_stock", "low", "out"];
 const STOCK_LABEL: L = { uz: "Ombor", ru: "Склад", en: "Stock" };
 
+export type DashboardKpi = "today_bookings" | "no_shows" | "today_revenue" | "prepaid" | "new_clients" | "lost_clients" | "total" | "debt";
+export type PrimaryCta = { id: "today_bookings" | "add_booking"; label: L };
+export type ReminderTemplate = { id: "appt_24h" | "appt_2h"; hoursBefore: number; label: L; text: L };
+
+/** Per-niche copy and dashboard wiring. Other niches keep DEFAULT_PACK. */
+export type NichePack = {
+  clinicalPrivacy: boolean;
+  /** Offered in Settings but not on by default (e.g. beauty stock). */
+  optionalModules: string[];
+  primaryCta: PrimaryCta | null;
+  dashboardKpis: DashboardKpi[];
+  emptyStates: { contacts: L; records: L } | null;
+  reminderTemplates: ReminderTemplate[];
+  formLabels: Partial<Record<"title" | "client" | "date" | "time" | "amount", L>>;
+  addRecord: L | null;
+  /** Appointment-level deposit checkbox (booking rows). */
+  bookingDeposit: boolean;
+};
+
+const DEFAULT_PACK: NichePack = {
+  clinicalPrivacy: false,
+  optionalModules: [],
+  primaryCta: null,
+  dashboardKpis: ["total", "debt"],
+  emptyStates: null,
+  reminderTemplates: [],
+  formLabels: {},
+  addRecord: null,
+  bookingDeposit: false,
+};
+
+const BEAUTY_PACK: NichePack = {
+  clinicalPrivacy: false,
+  optionalModules: ["stock"],
+  primaryCta: { id: "today_bookings", label: { uz: "Bugungi yozilish", ru: "Записи на сегодня", en: "Today's appointments" } },
+  dashboardKpis: ["today_bookings", "no_shows", "today_revenue", "prepaid"],
+  emptyStates: {
+    contacts: { uz: "Mijozlar yo'q. Doimiy, yangi yoki oldindan to'lagan mijozni qo'shing.", ru: "Клиентов нет. Добавьте постоянного, нового или предоплатившего клиента.", en: "No clients yet. Add a regular, new, or prepaid client." },
+    records: { uz: "Yozilishlar yo'q. Birinchi bandni qo'shing — 24 soat va 2 soat oldin eslatma o'zi yaratiladi.", ru: "Записей нет. Добавьте первый слот — напоминания за 24 ч и 2 ч создадутся сами.", en: "No appointments yet. Add the first booking — 24h and 2h reminders are created for you." },
+  },
+  reminderTemplates: [
+    { id: "appt_24h", hoursBefore: 24, label: { uz: "24 soat oldin", ru: "За 24 часа", en: "24 hours before" },
+      text: { uz: "💅 Ertaga {time} da yozilish: {client} — {title}. Depozit: {deposit}.", ru: "💅 Завтра в {time}: {client} — {title}. Депозит: {deposit}.", en: "💅 Tomorrow at {time}: {client} — {title}. Deposit: {deposit}." } },
+    { id: "appt_2h", hoursBefore: 2, label: { uz: "2 soat oldin", ru: "За 2 часа", en: "2 hours before" },
+      text: { uz: "💅 2 soatdan keyin: {client} — {title} ({time}).", ru: "💅 Через 2 часа: {client} — {title} ({time}).", en: "💅 In 2 hours: {client} — {title} ({time})." } },
+  ],
+  formLabels: {
+    title: { uz: "Xizmat", ru: "Услуга", en: "Service" },
+    client: { uz: "Mijoz", ru: "Клиент", en: "Client" },
+    date: { uz: "Sana", ru: "Дата", en: "Date" },
+    time: { uz: "Vaqt", ru: "Время", en: "Time" },
+    amount: { uz: "Narx (so'm)", ru: "Цена (сум)", en: "Price (UZS)" },
+  },
+  addRecord: { uz: "Yozilish qo'shish", ru: "Добавить запись", en: "Add appointment" },
+  bookingDeposit: true,
+};
+
 export type Niche = {
   id: string;
   emoji: string;
@@ -76,6 +133,7 @@ export type Niche = {
   /** Which records.data_type holds this niche's primary record list. */
   recordType: "record" | "booking" | "waybill";
   aiContext: string;
+  pack?: NichePack;
 };
 
 const AI = ["ai_pulse", "ai_faq"];
@@ -84,7 +142,7 @@ export const NICHES: Niche[] = [
   { id: "seller", emoji: "🛍", name: { uz: "Sotuvchi / onlayn do'kon", ru: "Продавец / онлайн-магазин", en: "Retail seller" }, modules: ["orders", "debts", "stock", "broadcast", ...AI], members: { label: { uz: "Mijozlar", ru: "Клиенты", en: "Customers" }, statuses: ["regular", "debtor", "inactive"] }, records: { label: { uz: "Buyurtmalar", ru: "Заказы", en: "Orders" }, statuses: ["new", "shipped", "delivered", "returned"] }, recordType: "record", aiContext: "retail shop: product questions, prices, delivery, sizes, complaints" },
   { id: "tutor", emoji: "🎓", name: { uz: "Onlayn o'qituvchi", ru: "Онлайн-репетитор", en: "Online tutor" }, modules: ["payments", "debts", "activity", "schedule", "reminders", ...AI], members: { label: { uz: "O'quvchilar", ru: "Ученики", en: "Students" }, statuses: ["paid", "debtor", "inactive"] }, records: { label: { uz: "Darslar / guruhlar", ru: "Уроки / группы", en: "Lessons / groups" }, statuses: ["scheduled", "done", "cancelled"] }, recordType: "record", aiContext: "online lessons: homework, schedule, payments, lesson difficulty" },
   { id: "vip", emoji: "💎", name: { uz: "VIP pullik kanal (treyding, kripto)", ru: "VIP платный канал (трейдинг, крипто)", en: "VIP paid channel (trading/crypto)" }, modules: ["subs", "access", "signals", "reminders", "broadcast", ...AI], members: { label: { uz: "Obunachilar", ru: "Подписчики", en: "Subscribers" }, statuses: ["active", "expiring", "expired"] }, records: { label: { uz: "Signallar", ru: "Сигналы", en: "Signals" }, statuses: ["open", "profit", "loss"] }, recordType: "record", aiContext: "trading signals channel: entries, profit/loss, subscription renewals" },
-  { id: "beauty", emoji: "💅", name: { uz: "Go'zallik saloni / usta", ru: "Салон красоты / мастер", en: "Beauty salon / master" }, modules: ["bookings", "deposits", "no_shows", "reminders", "broadcast", ...AI], members: { label: { uz: "Mijozlar", ru: "Клиенты", en: "Clients" }, statuses: ["regular", "new", "lost"] }, records: { label: { uz: "Yozilishlar", ru: "Записи", en: "Appointments" }, statuses: ["booked", "done", "no_show"] }, recordType: "booking", aiContext: "beauty services: prices, free slots, procedures, results" },
+  { id: "beauty", emoji: "💅", name: { uz: "Go'zallik saloni / usta", ru: "Салон красоты / мастер", en: "Beauty salon / master" }, modules: ["bookings", "deposits", "no_shows", "reminders", "broadcast", ...AI], members: { label: { uz: "Mijozlar", ru: "Клиенты", en: "Clients" }, statuses: ["regular", "new", "prepaid", "lost"] }, records: { label: { uz: "Yozilishlar", ru: "Записи", en: "Appointments" }, statuses: ["booked", "done", "no_show", "cancelled"] }, recordType: "booking", aiContext: "beauty services: prices, free slots, procedures, results", pack: BEAUTY_PACK },
   { id: "fitness", emoji: "🏋️", name: { uz: "Fitnes murabbiy", ru: "Фитнес-тренер", en: "Fitness coach" }, modules: ["membership", "expiry", "activity", "programs", "reminders", ...AI], members: { label: { uz: "Mijozlar", ru: "Клиенты", en: "Clients" }, statuses: ["paid", "debtor", "inactive"] }, records: { label: { uz: "Dasturlar", ru: "Программы", en: "Programs" }, statuses: ["active", "completed", "paused"] }, recordType: "record", aiContext: "fitness coaching: workouts, nutrition, progress, motivation" },
   { id: "doctor", emoji: "🩺", name: { uz: "Shifokor", ru: "Врач", en: "Doctor" }, modules: ["bookings", "deposits", "no_shows", "reminders", ...AI], members: { label: { uz: "Bemorlar", ru: "Пациенты", en: "Patients" }, statuses: ["prepaid", "debtor", "inactive"] }, records: { label: { uz: "Qabullar", ru: "Приёмы", en: "Appointments" }, statuses: ["booked", "done", "no_show"] }, recordType: "booking", aiContext: "medical consultation channel: symptoms, appointments, medications, prices" },
   { id: "psychologist", emoji: "🧠", name: { uz: "Psixolog", ru: "Психолог", en: "Psychologist" }, modules: ["bookings", "deposits", "no_shows", "reminders", ...AI], members: { label: { uz: "Mijozlar", ru: "Клиенты", en: "Clients" }, statuses: ["active", "debtor", "paused"] }, records: { label: { uz: "Seanslar", ru: "Сессии", en: "Sessions" }, statuses: ["booked", "done", "no_show"] }, recordType: "booking", aiContext: "psychology practice: anxiety, relationships, session booking, course content" },
@@ -95,6 +153,7 @@ export const NICHES: Niche[] = [
 ];
 
 export const getNiche = (id?: string | null): Niche => NICHES.find((n) => n.id === id) ?? NICHES[NICHES.length - 1]!;
+export const nichePack = (id?: string | null): NichePack => getNiche(id).pack ?? DEFAULT_PACK;
 
 // ---- Module catalog ----
 // Every module is exactly one of:
@@ -104,11 +163,11 @@ export const getNiche = (id?: string | null): Niche => NICHES.find((n) => n.id =
 // A module may only exist here if its screen is shipped.
 export type ModuleKind = "list" | "screen" | "ai";
 export type ScreenId = "reminders" | "broadcast" | "vip";
-export type ModuleDef = { id: string; label: L; desc: L; kind: ModuleKind; data_type: DataType | null; tones: Tone[] | null; screen: ScreenId | null };
+export type ModuleDef = { id: string; label: L; desc: L; kind: ModuleKind; data_type: DataType | null; tones: Tone[] | null; statusIds: string[] | null; screen: ScreenId | null };
 
-const list = (data_type: DataType, tones: Tone[] | null = null) => ({ kind: "list" as const, data_type, tones, screen: null });
-const screen = (s: ScreenId) => ({ kind: "screen" as const, data_type: null, tones: null, screen: s });
-const ai = (data_type: DataType) => ({ kind: "ai" as const, data_type, tones: null, screen: null });
+const list = (data_type: DataType, tones: Tone[] | null = null, statusIds: string[] | null = null) => ({ kind: "list" as const, data_type, tones, statusIds, screen: null });
+const screen = (s: ScreenId) => ({ kind: "screen" as const, data_type: null, tones: null, statusIds: null, screen: s });
+const ai = (data_type: DataType) => ({ kind: "ai" as const, data_type, tones: null, statusIds: null, screen: null });
 
 const M = (uz: string, ru: string, en: string): L => ({ uz, ru, en });
 
@@ -154,7 +213,8 @@ export const UNIVERSAL_MODULES = ["reminders", "broadcast", "ai_pulse", "ai_faq"
 export function offeredModules(nicheId: string | null | undefined, workspace: string | null | undefined): string[] {
   const n = getNiche(nicheId);
   const extra = workspace === "private_channel" || workspace === "private_group" ? ["access"] : [];
-  return Array.from(new Set([...n.modules, ...UNIVERSAL_MODULES, ...extra])).filter((id) => id in MODULE_DEFS);
+  const optional = nichePack(nicheId).optionalModules;
+  return Array.from(new Set([...n.modules, ...optional, ...UNIVERSAL_MODULES, ...extra])).filter((id) => id in MODULE_DEFS);
 }
 
 /** Statuses that exist for a data type within a niche (§5 table). */
@@ -170,6 +230,11 @@ export const isRecordType = (dt: DataType | null): dt is RecordDataType => !!dt 
 
 function moduleStatuses(n: Niche, m: ModuleDef): string[] {
   const all = statusesFor(n, m.data_type);
+  if (m.statusIds?.length) {
+    const hit = all.filter((s) => m.statusIds!.includes(s));
+    // Niche without that status (e.g. psychologist + deposits) keeps a working Clients tab.
+    return hit.length ? hit : all;
+  }
   return m.tones ? all.filter((s) => m.tones!.includes(STATUSES[s]?.tone ?? "neutral")) : all;
 }
 

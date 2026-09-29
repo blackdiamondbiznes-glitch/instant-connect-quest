@@ -68,7 +68,8 @@ export async function requireOwner({ token, initData, readOnly = false }: { toke
   const owner = await ownerByToken(token);
   if (readOnly && owner.is_demo) return owner;
   const uid = verifyInitData(initData);
-  if (uid === null || uid !== Number(owner.telegram_id)) throw new Error("Unauthorized");
+  const human = Number(owner.account_telegram_id ?? owner.telegram_id);
+  if (uid === null || (uid !== Number(owner.telegram_id) && uid !== human)) throw new Error("Unauthorized");
   return owner;
 }
 
