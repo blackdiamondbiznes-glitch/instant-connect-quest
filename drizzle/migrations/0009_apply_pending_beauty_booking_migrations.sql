@@ -1,0 +1,1 @@
+ALTER TABLE public.records ADD COLUMN IF NOT EXISTS deposit_paid boolean NOT NULL DEFAULT false;
