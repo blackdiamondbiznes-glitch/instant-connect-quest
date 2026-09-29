@@ -66,7 +66,13 @@ export async function runDueReminders() {
       : ((await supabaseAdmin.from("tg_chats").select("chat_id").eq("owner_id", r.owner_id)).data ?? []);
     for (const t of targets) {
       if (t.chat_id < 0) continue; // demo owners
-      await tg("sendMessage", { chat_id: t.chat_id, text: r.text }).then(() => count++).catch((e) => console.error("reminder failed", e));
+      const body: Record<string, unknown> = { chat_id: t.chat_id, text: r.text };
+      if (r.record_id && String(r.kind ?? "").startsWith("appt_")) {
+        const { lang } = await ownerInfo(Number(r.owner_id));
+        const label = tr({ uz: "Bekor qilish", ru: "Отменить", en: "Cancel" }, lang);
+        body["reply_markup"] = { inline_keyboard: [[{ text: label, callback_data: `bk:x:${r.record_id}` }]] };
+      }
+      await tg("sendMessage", body).then(() => count++).catch((e) => console.error("reminder failed", e));
     }
     const next = new Date(r.send_at);
     if (r.repeat === "daily" || r.repeat === "weekly") {
@@ -218,51 +224,39 @@ const fill = (t: string, vars: Record<string, string>) => t.replace(/\{(\w+)\}/g
 type BookingRow = { id: string; title: string; client: string | null; status: string; due_date: string | null; due_time: string | null; deposit_paid: boolean };
 
 /**
- * Creates/refreshes 24h and 2h owner-DM reminders for a booked appointment.
- * Relies on the hourly Cloud Job POST /api/public/hooks/tick (LOVABLE_CRON_SECRET).
- * 2h reminders need due_time; without a clock time only the 24h reminder is created (noon Tashkent).
+ * One client-chat reminder for a booked appointment (2h by default, 24h if the salon chose that).
+ * The hourly job POST /api/public/hooks/tick sends it. Rows without a client Telegram id get none.
  */
 export async function syncAppointmentReminders(owner: { telegram_id: number; language: string; niche: string | null }, rec: BookingRow) {
   const { nichePack, tr } = await import("./niches");
-  const { appointmentAt, hasClockTime } = await import("./config");
+  const { appointmentAt } = await import("./config");
   const templates = nichePack(owner.niche).reminderTemplates;
   if (!templates.length) return;
 
   await supabaseAdmin.from("reminders").delete().eq("owner_id", owner.telegram_id).eq("record_id", rec.id).in("kind", ["appt_24h", "appt_2h"]);
   if (rec.status !== "booked" || !rec.due_date) return;
 
+  const { data: row } = await supabaseAdmin.from("records").select("customer_tg_id").eq("id", rec.id).maybeSingle();
+  const chat = Number(row?.customer_tg_id);
+  if (!Number.isFinite(chat) || chat <= 0) return;
+
+  const { data: hours } = await supabaseAdmin.from("booking_settings").select("reminder_hours").eq("owner_id", owner.telegram_id).maybeSingle();
+  const lead = hours?.reminder_hours === 24 ? 24 : 2;
+  const tpl = templates.find((t) => t.hoursBefore === lead) ?? templates.find((t) => t.hoursBefore === 2);
+  if (!tpl) return;
   const when = appointmentAt(rec.due_date, rec.due_time);
-  const lang = owner.language;
-  const yes = tr({ uz: "ha", ru: "да", en: "yes" }, lang);
-  const no = tr({ uz: "yo'q", ru: "нет", en: "no" }, lang);
-  const vars = {
-    client: rec.client ?? "",
-    title: rec.title,
-    date: rec.due_date,
-    time: rec.due_time || "12:00",
-    deposit: rec.deposit_paid ? yes : no,
-  };
-  const { data: who } = await supabaseAdmin.from("tg_owners").select("account_telegram_id").eq("telegram_id", owner.telegram_id).maybeSingle();
-  const { humanChat } = await import("./account.server");
-  const chat = humanChat({ telegram_id: owner.telegram_id, account_telegram_id: who?.account_telegram_id ?? null });
-  const now = Date.now();
-  const rows = templates.flatMap((tpl) => {
-    if (tpl.id === "appt_2h" && !hasClockTime(rec.due_time)) return [];
-    const sendAt = new Date(when.getTime() - tpl.hoursBefore * 3600000);
-    if (sendAt.getTime() <= now) return [];
-    return [{
-      owner_id: owner.telegram_id,
-      chat_id: chat,
-      text: fill(tr(tpl.text, lang), vars).slice(0, 3500),
-      send_at: sendAt.toISOString(),
-      repeat: "none",
-      active: true,
-      kind: tpl.id,
-      record_id: rec.id,
-    }];
+  const sendAt = new Date(when.getTime() - lead * 3600000);
+  if (sendAt.getTime() <= Date.now()) return;
+  const text = fill(tr(tpl.text, owner.language), { time: (rec.due_time ?? "").slice(0, 5), title: rec.title, client: rec.client ?? "" }).slice(0, 3500);
+  const { error } = await supabaseAdmin.from("reminders").insert({
+    owner_id: owner.telegram_id,
+    chat_id: chat,
+    text,
+    send_at: sendAt.toISOString(),
+    repeat: "none",
+    active: true,
+    kind: tpl.id,
+    record_id: rec.id,
   });
-  if (rows.length) {
-    const { error } = await supabaseAdmin.from("reminders").insert(rows);
-    if (error) console.error("appointment reminders failed", error);
-  }
+  if (error) console.error("appointment reminders failed", error);
 }

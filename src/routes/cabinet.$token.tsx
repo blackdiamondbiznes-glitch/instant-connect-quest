@@ -12,6 +12,7 @@ import { Dashboard } from "@/components/cabinet/Dashboard";
 import { ListScreen } from "@/components/cabinet/ListScreen";
 import { AiScreen } from "@/components/cabinet/AiScreen";
 import { SettingsScreen } from "@/components/cabinet/SettingsScreen";
+import { BeautyCabinet } from "@/components/cabinet/BeautyCabinet";
 
 export const Route = createFileRoute("/cabinet/$token")({
   staticData: { sitemap: false },
@@ -53,6 +54,7 @@ function Cabinet() {
   const d = q.data;
   const lang = d.owner.language;
   const u = makeU(lang);
+  if (d.owner.niche === "beauty") return <BeautyCabinet d={d} u={u} lang={lang} token={token} />;
   const niche = getNiche(d.owner.niche);
   const sections = listSections(d.owner.niche, d.owner.modules, d.owner.workspace_type);
   const hasAi = ["ai_pulse", "ai_faq", "ai_content"].some((m) => d.owner.modules.includes(m));

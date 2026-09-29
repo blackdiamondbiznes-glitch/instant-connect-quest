@@ -108,9 +108,9 @@ const BEAUTY_PACK: NichePack = {
   },
   reminderTemplates: [
     { id: "appt_24h", hoursBefore: 24, label: { uz: "24 soat oldin", ru: "За 24 часа", en: "24 hours before" },
-      text: { uz: "💅 Ertaga {time} da yozilish: {client} — {title}. Depozit: {deposit}.", ru: "💅 Завтра в {time}: {client} — {title}. Депозит: {deposit}.", en: "💅 Tomorrow at {time}: {client} — {title}. Deposit: {deposit}." } },
+      text: { uz: "Ertaga {time} — {title}.", ru: "Завтра {time} — {title}.", en: "Tomorrow {time} — {title}." } },
     { id: "appt_2h", hoursBefore: 2, label: { uz: "2 soat oldin", ru: "За 2 часа", en: "2 hours before" },
-      text: { uz: "💅 2 soatdan keyin: {client} — {title} ({time}).", ru: "💅 Через 2 часа: {client} — {title} ({time}).", en: "💅 In 2 hours: {client} — {title} ({time})." } },
+      text: { uz: "Bugun {time} — {title}.", ru: "Сегодня {time} — {title}.", en: "Today {time} — {title}." } },
   ],
   formLabels: {
     title: { uz: "Xizmat", ru: "Услуга", en: "Service" },

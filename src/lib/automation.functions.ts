@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const Tok = z.object({ token: z.string().uuid(), initData: z.string().max(4096).optional().nullable() });
 
-export type Reminder = { id: string; chat_id: number | null; text: string; send_at: string; repeat: string; active: boolean; last_sent_at: string | null; kind?: string | null };
+export type Reminder = { id: string; chat_id: number | null; text: string; send_at: string; repeat: string; active: boolean; last_sent_at: string | null; kind: string; record_id: string | null };
 export type Broadcast = { id: string; text: string; sent: number; failed: number; created_at: string };
 export type VipSub = { tg_user_id: number; user_name: string | null; ends_at: string; status: string };
 export type VipOrder = { id: string; user_name: string | null; amount: number; status: string; provider: string | null; created_at: string };
@@ -16,7 +16,7 @@ export const getAutomation = createServerFn({ method: "POST" })
     const owner = await requireOwner({ token: data.token, initData: data.initData, readOnly: true });
     const id = owner.telegram_id;
     const [rem, br, vs, subs, orders] = await Promise.all([
-      supabaseAdmin.from("reminders").select("id,chat_id,text,send_at,repeat,active,last_sent_at,kind").eq("owner_id", id).order("send_at"),
+      supabaseAdmin.from("reminders").select("id,chat_id,text,send_at,repeat,active,last_sent_at,kind,record_id").eq("owner_id", id).order("send_at"),
       supabaseAdmin.from("broadcasts").select("id,text,sent,failed,created_at").eq("owner_id", id).order("created_at", { ascending: false }).limit(10),
       supabaseAdmin.from("vip_settings").select("*").eq("owner_id", id).maybeSingle(),
       supabaseAdmin.from("vip_subs").select("tg_user_id,user_name,ends_at,status").eq("owner_id", id).order("ends_at"),

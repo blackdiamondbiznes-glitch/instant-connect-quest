@@ -1,13 +1,13 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { tg } from "./telegram.server";
-import { BOOKING_DAYS, BOOKING_SLOTS, DEFAULT_CLOSE, DEFAULT_OPEN, DEFAULT_SLOT_MINUTES, DEPOSIT_HOLD_MINUTES, addCivilDays, civilDate, civilWeekday, clockSlots } from "./config";
+import { BOOKING_DAYS, BOOKING_SLOTS, DEFAULT_CLOSE, DEFAULT_OPEN, DEFAULT_SLOT_MINUTES, DEPOSIT_HOLD_MINUTES, addCivilDays, appointmentAt, civilDate, civilWeekday, clockSlots } from "./config";
 import { nichePack, tr, type L } from "./niches";
-import { escapeHtml, notifyOwner, paymentLinks, syncAppointmentReminders } from "./automation.server";
+import { escapeHtml, notifyOwner, syncAppointmentReminders } from "./automation.server";
 
 const B = {
   closed: { uz: "Bu salon hozircha onlayn yozilishni ochmagan.", ru: "Этот салон пока не открыл онлайн-запись.", en: "This salon isn't taking online bookings yet." },
   noServices: { uz: "Yozilish ochilishi uchun salon xizmatlar ro'yxatini to'ldirishi kerak. Keyinroq urinib ko'ring.", ru: "Салону нужно заполнить список услуг. Попробуйте позже.", en: "The salon still needs to add its services. Try again later." },
-  ownerEmpty: { uz: "Mijoz yozilmoqchi, lekin xizmatlar ro'yxati bo'sh. Kabinet → Sozlamalar → Xizmatlar.", ru: "Клиент хочет записаться, но список услуг пуст. Кабинет → Настройки → Услуги.", en: "A client wants to book, but your service list is empty. Cabinet → Settings → Services." },
+  ownerEmpty: { uz: "Mijoz yozilmoqchi, lekin xizmatlar ro'yxati bo'sh. Kabinet → Xizmatlar.", ru: "Клиент хочет записаться, но список услуг пуст. Кабинет → Услуги.", en: "A client wants to book, but your service list is empty. Cabinet → Services." },
   hello: { uz: "💅 Yozilish: {salon}\nXizmatni tanlang:", ru: "💅 Запись: {salon}\nВыберите услугу:", en: "💅 Booking: {salon}\nPick a service:" },
   pickDay: { uz: "Kunni tanlang:", ru: "Выберите день:", en: "Pick a day:" },
   pickTime: { uz: "Bo'sh vaqtni tanlang:", ru: "Выберите свободное время:", en: "Pick a free time:" },
@@ -33,6 +33,15 @@ const B = {
   ownerNew: { uz: "💅 Yangi yozilish", ru: "💅 Новая запись", en: "💅 New booking" },
   today: { uz: "Bugun", ru: "Сегодня", en: "Today" },
   tomorrow: { uz: "Ertaga", ru: "Завтра", en: "Tomorrow" },
+  otherDay: { uz: "Boshqa kun", ru: "Другой день", en: "Another day" },
+  confirmBtn: { uz: "Tasdiqlash", ru: "Подтвердить", en: "Confirm" },
+  declineBtn: { uz: "Bekor", ru: "Отмена", en: "Back" },
+  accepted: { uz: "Yozuv qabul qilindi.", ru: "Запись принята.", en: "You're booked." },
+  remindNote: { uz: "Eslatma {hours} soat oldin shu chatga keladi.", ru: "Напоминание придёт в этот чат за {hours} ч.", en: "A reminder arrives in this chat {hours} h before." },
+  remindSkip: { uz: "Vaqt yaqin, eslatma yuborilmaydi.", ru: "Время близко, напоминание не отправится.", en: "It's soon, so no reminder will be sent." },
+  confirmLine: { uz: "{title}\n{date}, {time}\n{price} so'm", ru: "{title}\n{date}, {time}\n{price} сум", en: "{title}\n{date}, {time}\n{price} UZS" },
+  backed: { uz: "Bekor qilindi.", ru: "Отменено.", en: "Cancelled." },
+  restart: { uz: "Bu tasdiq eskirgan. Yozilishni qaytadan boshlang.", ru: "Это подтверждение устарело. Начните запись заново.", en: "That confirmation expired. Start the booking again." },
 } satisfies Record<string, L>;
 
 const b = (k: keyof typeof B, lang: string) => tr(B[k], lang);
@@ -44,9 +53,11 @@ type Hours = {
   slots: string[];
   closed: Set<number>;
   deposit: number;
+  remind: number;
   click_service_id: string | null;
   click_merchant_id: string | null;
   payme_merchant_id: string | null;
+  shut: string | null;
 };
 
 const salonName = (o: { display_name?: string | null; first_name?: string | null }) => o.display_name?.trim() || o.first_name || "Salon";
@@ -72,13 +83,17 @@ export async function hoursFor(ownerId: number): Promise<Hours> {
     .eq("owner_id", ownerId).maybeSingle();
   const slots = clockSlots(data?.open_time ?? DEFAULT_OPEN, data?.close_time ?? DEFAULT_CLOSE, data?.slot_minutes ?? DEFAULT_SLOT_MINUTES);
   const closed = new Set((data?.closed_days ?? "").split(",").filter(Boolean).map((x) => Number(x)).filter((n) => n >= 0 && n <= 6));
+  const { data: rem } = await supabaseAdmin.from("booking_settings").select("reminder_hours").eq("owner_id", ownerId).maybeSingle();
+  const { data: shut } = await supabaseAdmin.from("booking_settings").select("closed_on").eq("owner_id", ownerId).maybeSingle();
   return {
     slots: slots.length ? slots : [...BOOKING_SLOTS],
     closed,
     deposit: Math.max(0, Number(data?.deposit_amount) || 0),
+    remind: rem?.reminder_hours === 24 ? 24 : 2,
     click_service_id: data?.click_service_id ?? null,
     click_merchant_id: data?.click_merchant_id ?? null,
     payme_merchant_id: data?.payme_merchant_id ?? null,
+    shut: shut?.closed_on ?? null,
   };
 }
 
@@ -87,21 +102,32 @@ async function taken(ownerId: number, date: string) {
   return new Set((data ?? []).map((r) => r.due_time).filter(Boolean));
 }
 
-function dayButtons(lang: string, closed: Set<number>) {
+function dayButtons(lang: string, closed: Set<number>, shut: string | null) {
   const today = civilDate();
-  const rows: { text: string; callback_data: string }[][] = [];
+  const row: { text: string; callback_data: string }[] = [];
   for (let i = 0; i < BOOKING_DAYS; i++) {
     const date = addCivilDays(today, i);
-    if (closed.has(civilWeekday(date))) continue;
-    const label = i === 0 ? b("today", lang) : i === 1 ? b("tomorrow", lang) : date.slice(5);
-    rows.push([{ text: `${label} · ${date.slice(5)}`, callback_data: `bk:d:${date}` }]);
+    if (date === shut || closed.has(civilWeekday(date))) continue;
+    const label = i === 0 ? b("today", lang) : i === 1 ? b("tomorrow", lang) : b("otherDay", lang);
+    row.push({ text: label, callback_data: `bk:d:${date}` });
   }
-  return rows;
+  return row.length ? [row] : [];
 }
 
-function openDays(closed: Set<number>) {
+const MONTHS: Record<string, string[]> = {
+  uz: ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"],
+  ru: ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"],
+  en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+};
+function prettyDate(iso: string, lang: string) {
+  const [, m, d] = iso.split("-");
+  const names = MONTHS[lang] ?? MONTHS["uz"]!;
+  return `${Number(d)}-${names[Number(m) - 1] ?? m}`;
+}
+
+function openDays(closed: Set<number>, shut: string | null) {
   const today = civilDate();
-  return Array.from({ length: BOOKING_DAYS }, (_, i) => addCivilDays(today, i)).filter((date) => !closed.has(civilWeekday(date)));
+  return Array.from({ length: BOOKING_DAYS }, (_, i) => addCivilDays(today, i)).filter((date) => date !== shut && !closed.has(civilWeekday(date)));
 }
 
 export async function startBooking(from: { id: number; first_name?: string; language_code?: string }, ownerId: number, lang: string) {
@@ -121,8 +147,13 @@ export async function startBooking(from: { id: number; first_name?: string; lang
   });
 }
 
-export async function handleBookCallback(from: { id: number }, data: string, lang: string) {
+export async function handleBookCallback(from: { id: number; first_name?: string; last_name?: string; username?: string }, data: string, lang: string) {
   if (data.startsWith("bk:x:")) return cancelByClient(from.id, data.slice(5), lang);
+  if (data === "bk:ok") return confirmBooking(from, lang);
+  if (data === "bk:no") {
+    await supabaseAdmin.from("bot_customers").update({ pending: {}, updated_at: new Date().toISOString() }).eq("tg_user_id", from.id);
+    return void (await tg("sendMessage", { chat_id: from.id, text: b("backed", lang) }));
+  }
   const { data: cust } = await supabaseAdmin.from("bot_customers").select("owner_id, mode, pending").eq("tg_user_id", from.id).maybeSingle();
   if (!cust?.owner_id || cust.mode !== "book") return;
   const ownerId = Number(cust.owner_id);
@@ -137,37 +168,43 @@ export async function handleBookCallback(from: { id: number }, data: string, lan
     if (!svc) return;
     const next: Pending = { service_id: svc.id, title: svc.title, amount: Number(svc.price) };
     await supabaseAdmin.from("bot_customers").update({ pending: next, updated_at: new Date().toISOString() }).eq("tg_user_id", from.id);
-    const days = dayButtons(lang, hours.closed);
+    const days = dayButtons(lang, hours.closed, hours.shut);
     if (!days.length) return void (await tg("sendMessage", { chat_id: from.id, text: b("noDays", lang) }));
     return void (await tg("sendMessage", { chat_id: from.id, text: `${svc.title}\n\n${b("pickDay", lang)}`, reply_markup: { inline_keyboard: days } }));
   }
 
   if (data.startsWith("bk:d:")) {
     const date = data.slice(5);
-    if (!openDays(hours.closed).includes(date) || !pending.service_id) return;
+    if (!openDays(hours.closed, hours.shut).includes(date) || !pending.service_id) return;
     const busy = await taken(ownerId, date);
     const free = hours.slots.filter((s) => !busy.has(s));
     const { time: _ignored, ...rest } = pending;
     await supabaseAdmin.from("bot_customers").update({ pending: { ...rest, date }, updated_at: new Date().toISOString() }).eq("tg_user_id", from.id);
-    const days = dayButtons(lang, hours.closed);
+    const days = dayButtons(lang, hours.closed, hours.shut);
     if (!free.length) return void (await tg("sendMessage", { chat_id: from.id, text: b("noSlots", lang), reply_markup: { inline_keyboard: days } }));
     const rows = [];
-    for (let i = 0; i < free.length; i += 2) rows.push(free.slice(i, i + 2).map((tm) => ({ text: tm, callback_data: `bk:t:${tm}` })));
-    return void (await tg("sendMessage", { chat_id: from.id, text: `${date}\n${b("pickTime", lang)}`, reply_markup: { inline_keyboard: rows } }));
+    for (let i = 0; i < free.length; i += 3) rows.push(free.slice(i, i + 3).map((tm) => ({ text: tm, callback_data: `bk:t:${tm}` })));
+    return void (await tg("sendMessage", { chat_id: from.id, text: `${prettyDate(date, lang)}\n${b("pickTime", lang)}`, reply_markup: { inline_keyboard: rows } }));
   }
 
   if (data.startsWith("bk:t:")) {
     const time = data.slice(5);
     if (!hours.slots.includes(time) || !pending.date || !pending.service_id) return;
     const busy = await taken(ownerId, pending.date);
-    if (busy.has(time)) return void (await tg("sendMessage", { chat_id: from.id, text: b("taken", lang), reply_markup: { inline_keyboard: dayButtons(lang, hours.closed) } }));
+    if (busy.has(time)) return void (await tg("sendMessage", { chat_id: from.id, text: b("taken", lang), reply_markup: { inline_keyboard: dayButtons(lang, hours.closed, hours.shut) } }));
     await supabaseAdmin.from("bot_customers").update({ pending: { ...pending, time }, updated_at: new Date().toISOString() }).eq("tg_user_id", from.id);
+    const text = fill(b("confirmLine", lang), { title: pending.title ?? "", date: prettyDate(pending.date, lang), time, price: money(Number(pending.amount) || 0) });
     return void (await tg("sendMessage", {
       chat_id: from.id,
-      text: `${pending.title}\n${pending.date} ${time}\n\n${b("phone", lang)}`,
-      reply_markup: { keyboard: [[{ text: b("sharePhone", lang), request_contact: true }]], resize_keyboard: true, one_time_keyboard: true },
+      text,
+      reply_markup: { inline_keyboard: [[{ text: b("confirmBtn", lang), callback_data: "bk:ok" }, { text: b("declineBtn", lang), callback_data: "bk:no" }]] },
     }));
   }
+}
+
+async function confirmBooking(from: { id: number; first_name?: string; last_name?: string; username?: string }, lang: string) {
+  const ok = await finishBooking(from, null, lang);
+  if (!ok) await tg("sendMessage", { chat_id: from.id, text: b("restart", lang) });
 }
 
 async function cancelByClient(tgId: number, recordId: string, lang: string) {
@@ -188,7 +225,7 @@ async function cancelByClient(tgId: number, recordId: string, lang: string) {
   }
 }
 
-export async function finishBooking(from: { id: number; first_name?: string; last_name?: string; username?: string }, phone: string, lang: string) {
+export async function finishBooking(from: { id: number; first_name?: string; last_name?: string; username?: string }, phone: string | null, lang: string) {
   const { data: cust } = await supabaseAdmin.from("bot_customers").select("owner_id, mode, pending").eq("tg_user_id", from.id).maybeSingle();
   const pending = (cust?.pending ?? {}) as Pending;
   if (!cust?.owner_id || cust.mode !== "book" || !pending.service_id || !pending.date || !pending.time || !pending.title) return false;
@@ -196,8 +233,8 @@ export async function finishBooking(from: { id: number; first_name?: string; las
   const owner = await ownerRow(ownerId);
   if (!bookable(owner)) return false;
   const hours = await hoursFor(ownerId);
-  const days = dayButtons(lang, hours.closed);
-  if (!hours.slots.includes(pending.time) || !openDays(hours.closed).includes(pending.date)) {
+  const days = dayButtons(lang, hours.closed, hours.shut);
+  if (!hours.slots.includes(pending.time) || !openDays(hours.closed, hours.shut).includes(pending.date)) {
     await tg("sendMessage", { chat_id: from.id, text: b("taken", lang), reply_markup: { remove_keyboard: true } });
     if (days.length) await tg("sendMessage", { chat_id: from.id, text: b("pickDay", lang), reply_markup: { inline_keyboard: days } });
     return true;
@@ -211,7 +248,7 @@ export async function finishBooking(from: { id: number; first_name?: string; las
   const name = [from.first_name, from.last_name].filter(Boolean).join(" ").slice(0, 120) || "Mijoz";
   const { data: existing } = await supabaseAdmin.from("members").select("id,status").eq("owner_id", ownerId).eq("tg_user_id", from.id).maybeSingle();
   if (existing) {
-    await supabaseAdmin.from("members").update({ name, phone }).eq("id", existing.id).eq("owner_id", ownerId);
+    await supabaseAdmin.from("members").update(phone ? { name, phone } : { name }).eq("id", existing.id).eq("owner_id", ownerId);
   } else {
     const { error } = await supabaseAdmin.from("members").insert({ owner_id: ownerId, name, phone, status: "new", amount: 0, tg_user_id: from.id });
     if (error) { console.error("booking member failed", error); return true; }
@@ -229,36 +266,17 @@ export async function finishBooking(from: { id: number; first_name?: string; las
   await syncAppointmentReminders({ telegram_id: ownerId, language: owner!.language, niche: owner!.niche }, rec);
   await supabaseAdmin.from("bot_customers").update({ pending: {}, updated_at: new Date().toISOString() }).eq("tg_user_id", from.id);
 
-  const canClick = !!(hours.click_service_id && hours.click_merchant_id);
-  const canPayme = !!hours.payme_merchant_id;
-  let links: { text: string; url: string }[] = [];
-  if (hours.deposit > 0 && (canClick || canPayme)) {
-    const { data: order } = await supabaseAdmin.from("booking_deposits").insert({
-      owner_id: ownerId, record_id: rec.id, tg_user_id: from.id, amount: hours.deposit,
-    }).select("id,amount").single();
-    if (order) links = paymentLinks({ id: order.id, amount: Number(order.amount) }, hours);
-  }
-
+  const when = appointmentAt(pending.date, pending.time);
+  const remindAt = new Date(when.getTime() - hours.remind * 3600000);
+  const note = remindAt.getTime() > Date.now() ? fill(b("remindNote", lang), { hours: String(hours.remind) }) : b("remindSkip", lang);
   await tg("sendMessage", {
     chat_id: from.id,
-    text: fill(b("booked", lang), { title: pending.title, date: pending.date, time: pending.time }),
-    reply_markup: { remove_keyboard: true },
+    text: `${b("accepted", lang)}\n\n${note}`,
+    reply_markup: { inline_keyboard: [[{ text: b("cancelBtn", lang), callback_data: `bk:x:${rec.id}` }]] },
   });
-  const payText = hours.deposit <= 0
-    ? b("cancelBtn", lang)
-    : links.length
-      ? fill(b("payNow", lang), { amount: money(hours.deposit), hold: String(DEPOSIT_HOLD_MINUTES) })
-      : fill(b("payAtSalon", lang), { amount: money(hours.deposit), hold: String(DEPOSIT_HOLD_MINUTES) });
-  const keyboard = [
-    ...links.map((l) => [{ text: l.text, url: l.url }]),
-    [{ text: b("cancelBtn", lang), callback_data: `bk:x:${rec.id}` }],
-  ];
-  await tg("sendMessage", { chat_id: from.id, text: payText, reply_markup: { inline_keyboard: keyboard } });
 
-  const who = `${name}${from.username ? ` (@${from.username})` : ""} ${phone}`;
-  const depositNote = hours.deposit > 0 ? `\n${money(hours.deposit)} UZS` : "";
-  await notifyOwner(ownerId, `${b("ownerNew", owner!.language)}: <b>${escapeHtml(pending.title)}</b>\n${escapeHtml(who)}\n${pending.date} ${pending.time}${depositNote}`);
-  if (hours.deposit > 0 && !links.length) await notifyOwner(ownerId, b("ownerNeedKeys", owner!.language));
+  const who = `${name}${from.username ? ` (@${from.username})` : ""}`;
+  await notifyOwner(ownerId, `${b("ownerNew", owner!.language)}: <b>${escapeHtml(pending.title)}</b>\n${escapeHtml(who)}\n${pending.date} ${pending.time}`);
   return true;
 }
 

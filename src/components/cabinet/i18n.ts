@@ -181,6 +181,23 @@ export const UI = {
   hideFooter: S("«@bot bilan yaratildi» qatorini yashirish", "Скрыть строку «сделано с @bot»", "Hide the “built with @bot” line"),
   proOnly: S("Faqat Pro", "Только Pro", "Pro only"),
   defaultChat: S("Postlar uchun asosiy chat", "Основной чат для постов", "Default chat for posts"),
+  moreTab: S("Yana", "Ещё", "More"),
+  todayEmpty: S("Bugun yozuv yo'q", "На сегодня записей нет", "No bookings today"),
+  serviceName: S("Xizmat nomi", "Название услуги", "Service name"),
+  postGroup: S("Guruhga qo'yish", "В группу", "Post to group"),
+  remindWhen: S("Eslatma", "Напоминание", "Reminder"),
+  h2: S("2 soat oldin", "За 2 часа", "2 hours before"),
+  h24: S("24 soat oldin", "За 24 часа", "24 hours before"),
+  sendToday: S("Bugungi ro'yxatni yuborish", "Отправить список на сегодня", "Send today's list"),
+  sentToYou: S("Ro'yxat Telegramga yuborildi", "Список отправлен в Telegram", "The list was sent on Telegram"),
+  salonName: S("Salon nomi", "Название салона", "Salon name"),
+  slot_taken: S("Bu vaqt band.", "Это время занято.", "That time is taken."),
+  noFree: S("Bugun bo'sh vaqt yo'q.", "На сегодня свободного времени нет.", "No free time left today."),
+  cancelBooking: S("Bekor", "Отмена", "Cancel"),
+  closeToday: S("Bugun yopiq", "Сегодня закрыто", "Closed today"),
+  closeTodayHint: S("Qolgan bugungi yozuvlar bekor bo'ladi va mijozlarga xabar ketadi. Ertangi kun qoladi.", "Оставшиеся записи на сегодня отменятся, клиентам уйдёт сообщение. Завтрашний день не трогаем.", "Today's remaining bookings are cancelled and clients are told. Tomorrow stays as it is."),
+  closeTodayYes: S("Ha, yopish", "Да, закрыть", "Yes, close"),
+  closedTodayLine: S("Bugun yangi yozilish yopiq.", "Новая запись на сегодня закрыта.", "No new bookings today."),
 } satisfies Record<string, L>;
 
 export type UKey = keyof typeof UI;

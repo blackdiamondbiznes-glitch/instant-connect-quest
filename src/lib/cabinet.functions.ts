@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireOwner, mutationOwner, planExpired, effectiveTier, consumeQuota, refundQuota, supabaseAdmin, type Owner } from "./cabinet.server";
 import { enabledDataTypes, getNiche, isMemberType, nichePack, offeredModules, statusesFor, type DataType } from "./niches";
-import { ANALYSIS_RUNS_PER_DAY, DEFAULT_CLOSE, DEFAULT_OPEN, DEFAULT_SLOT_MINUTES, FOOTER_REMOVABLE_TIERS, PLAN_PERIOD_DAYS, PLAN_PRICE_UZS } from "./config";
+import { ANALYSIS_RUNS_PER_DAY, DEFAULT_CLOSE, DEFAULT_OPEN, DEFAULT_SLOT_MINUTES, FOOTER_REMOVABLE_TIERS, PLAN_PERIOD_DAYS, PLAN_PRICE_UZS, civilDate } from "./config";
 
 const Tok = z.object({ token: z.string().uuid(), initData: z.string().max(4096).optional().nullable() });
 const RecordType = z.enum(["record", "booking", "stock", "waybill"]);
@@ -18,7 +18,7 @@ export type Suggestion = { id: string; kind: "post" | "fact" | "perf_digest" | "
 export type PostSignal = { posts: number; reactions: number; replies: number };
 export type ServiceRow = { id: string; title: string; price: number };
 export type Schedule = {
-  open: string; close: string; step: number; closed: number[]; deposit: number;
+  open: string; close: string; step: number; closed: number[]; deposit: number; reminder: number; closedToday: boolean;
   clickReady: boolean; paymeReady: boolean; clickService: string; clickMerchant: string; paymeMerchant: string;
 };
 
@@ -61,12 +61,20 @@ export const getCabinet = createServerFn({ method: "POST" })
     const { data: hours } = booking
       ? await supabaseAdmin.from("booking_settings").select("open_time,close_time,slot_minutes,closed_days,deposit_amount,click_service_id,click_merchant_id,click_secret_key,payme_merchant_id,payme_key").eq("owner_id", id).maybeSingle()
       : { data: null };
+    const { data: rem } = booking
+      ? await supabaseAdmin.from("booking_settings").select("reminder_hours").eq("owner_id", id).maybeSingle()
+      : { data: null };
+    const { data: shut } = booking
+      ? await supabaseAdmin.from("booking_settings").select("closed_on").eq("owner_id", id).maybeSingle()
+      : { data: null };
     const schedule: Schedule | null = booking ? {
       open: hours?.open_time ?? DEFAULT_OPEN,
       close: hours?.close_time ?? DEFAULT_CLOSE,
       step: hours?.slot_minutes ?? DEFAULT_SLOT_MINUTES,
       closed: (hours?.closed_days ?? "").split(",").filter(Boolean).map((x) => Number(x)).filter((n) => n >= 0 && n <= 6),
       deposit: Math.max(0, Number(hours?.deposit_amount) || 0),
+      reminder: rem?.reminder_hours === 24 ? 24 : 2,
+      closedToday: shut?.closed_on === civilDate(),
       clickReady: !!(hours?.click_service_id && hours?.click_merchant_id && hours?.click_secret_key),
       paymeReady: !!(hours?.payme_merchant_id && hours?.payme_key),
       clickService: hours?.click_service_id ?? "",
@@ -153,7 +161,10 @@ export const saveRecord = createServerFn({ method: "POST" })
       ? supabaseAdmin.from("records").update(row).eq("id", data.id).eq("owner_id", owner.telegram_id).select("id,title,client,status,due_date,due_time,deposit_paid").maybeSingle()
       : supabaseAdmin.from("records").insert(row).select("id,title,client,status,due_date,due_time,deposit_paid").single();
     const { data: saved, error } = await q;
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (error.code === "23505") return { ok: false as const, error: "slot_taken" as const };
+      throw new Error(error.message);
+    }
     if (data.data_type === "booking" && saved) {
       const { syncAppointmentReminders } = await import("./automation.server");
       await syncAppointmentReminders(owner, saved);
@@ -168,11 +179,23 @@ export const setRecordStatus = createServerFn({ method: "POST" })
     if (r.error) return { ok: false as const, error: r.error };
     const owner = r.owner;
     if (!statusesFor(getNiche(owner.niche), "booking").includes(data.status)) return { ok: false as const, error: "invalid_status" as const };
-    const { data: saved, error } = await supabaseAdmin.from("records").update({ status: data.status }).eq("id", data.id).eq("owner_id", owner.telegram_id).eq("data_type", "booking").select("id,title,client,status,due_date,due_time,deposit_paid").maybeSingle();
+    const { data: saved, error } = await supabaseAdmin.from("records").update({ status: data.status }).eq("id", data.id).eq("owner_id", owner.telegram_id).eq("data_type", "booking").select("id,title,client,status,due_date,due_time,deposit_paid,customer_tg_id").maybeSingle();
     if (error) throw new Error(error.message);
     if (!saved) return { ok: false as const, error: "not_found" as const };
     const { syncAppointmentReminders } = await import("./automation.server");
     await syncAppointmentReminders(owner, saved);
+    const clientChat = Number(saved.customer_tg_id);
+    if (data.status === "cancelled" && clientChat > 0) {
+      const { tg } = await import("./telegram.server");
+      const { tr } = await import("./niches");
+      const when = `${saved.due_date ?? ""} ${(saved.due_time ?? "").slice(0, 5)}`.trim();
+      const text = tr({
+        uz: `Yozilish bekor qilindi.\n${when} — ${saved.title}`,
+        ru: `Запись отменена.\n${when} — ${saved.title}`,
+        en: `Booking cancelled.\n${when} — ${saved.title}`,
+      }, owner.language);
+      await tg("sendMessage", { chat_id: clientChat, text }).catch((e) => console.error("cancel notify failed", e));
+    }
     return { ok: true as const };
   });
 
@@ -250,6 +273,7 @@ export const saveBookingSettings = createServerFn({ method: "POST" })
     clickSecret: z.string().max(200),
     paymeMerchant: z.string().max(80),
     paymeKey: z.string().max(200),
+    reminder: z.union([z.literal(2), z.literal(24)]).optional(),
   }).parse(d))
   .handler(async ({ data }) => {
     const r = await mutationOwner(data.token, data.initData);
@@ -279,6 +303,68 @@ export const saveBookingSettings = createServerFn({ method: "POST" })
     if (data.paymeKey.trim()) row.payme_key = data.paymeKey.trim();
     const { error } = await supabaseAdmin.from("booking_settings").upsert(row);
     if (error) throw new Error(error.message);
+    if (data.reminder === 2 || data.reminder === 24) {
+      const { error: remErr } = await supabaseAdmin.from("booking_settings").update({ reminder_hours: data.reminder }).eq("owner_id", id);
+      if (remErr) console.error("reminder hours not saved", remErr.message);
+    }
+    return { ok: true as const };
+  });
+
+/** Sends today's booking list to the owner's Telegram chat. */
+export const postTodayList = createServerFn({ method: "POST" })
+  .inputValidator((d) => Tok.parse(d))
+  .handler(async ({ data }) => {
+    const r = await mutationOwner(data.token, data.initData);
+    if (r.error) return { ok: false as const, error: r.error };
+    const { civilDate } = await import("./config");
+    const today = civilDate();
+    const { data: rows } = await supabaseAdmin.from("records")
+      .select("title,client,due_time,status")
+      .eq("owner_id", r.owner.telegram_id)
+      .eq("data_type", "booking")
+      .eq("due_date", today)
+      .in("status", ["booked", "done"])
+      .order("due_time");
+    const { tr } = await import("./niches");
+    const { notifyOwner } = await import("./automation.server");
+    const lang = r.owner.language;
+    const head = tr({ uz: "Bugun", ru: "Сегодня", en: "Today" }, lang);
+    const empty = tr({ uz: "Bugun yozuv yo'q.", ru: "На сегодня записей нет.", en: "No bookings today." }, lang);
+    const lines = (rows ?? []).map((x) => `${(x.due_time ?? "").slice(0, 5)}  ${x.title}  ${x.client ?? "—"}`);
+    await notifyOwner(r.owner.telegram_id, `${head}\n${lines.length ? lines.join("\n") : empty}`);
+    return { ok: true as const };
+  });
+
+/** Cancels today's remaining bookings, tells those clients, and blocks new bookings for today only. */
+export const closeToday = createServerFn({ method: "POST" })
+  .inputValidator((d) => Tok.parse(d))
+  .handler(async ({ data }) => {
+    const r = await mutationOwner(data.token, data.initData);
+    if (r.error) return { ok: false as const, error: r.error };
+    if (r.owner.niche !== "beauty") return { ok: false as const, error: "module_disabled" as const };
+    const today = civilDate();
+    const { data: rows } = await supabaseAdmin.from("records")
+      .select("id,title,client,status,due_date,due_time,deposit_paid,customer_tg_id")
+      .eq("owner_id", r.owner.telegram_id).eq("data_type", "booking").eq("due_date", today).eq("status", "booked");
+    const { syncAppointmentReminders } = await import("./automation.server");
+    const { tg } = await import("./telegram.server");
+    const { tr } = await import("./niches");
+    for (const rec of rows ?? []) {
+      const { data: moved } = await supabaseAdmin.from("records").update({ status: "cancelled" }).eq("id", rec.id).eq("status", "booked").select("id");
+      if (!moved?.length) continue;
+      await syncAppointmentReminders(r.owner, { ...rec, status: "cancelled" });
+      const chat = Number(rec.customer_tg_id);
+      if (chat > 0) {
+        const text = tr({
+          uz: `Bugun salon yopiq.\n${(rec.due_time ?? "").slice(0, 5)} — ${rec.title} bekor qilindi.`,
+          ru: `Сегодня салон закрыт.\n${(rec.due_time ?? "").slice(0, 5)} — ${rec.title} отменено.`,
+          en: `The salon is closed today.\n${(rec.due_time ?? "").slice(0, 5)} — ${rec.title} is cancelled.`,
+        }, r.owner.language);
+        await tg("sendMessage", { chat_id: chat, text }).catch((e) => console.error("close today notify failed", e));
+      }
+    }
+    const { error } = await supabaseAdmin.from("booking_settings").upsert({ owner_id: r.owner.telegram_id, closed_on: today });
+    if (error) console.error("closed_on not saved", error.message);
     return { ok: true as const };
   });
 

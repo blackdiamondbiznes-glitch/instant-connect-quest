@@ -49,7 +49,7 @@ export async function createExtraSalon(actor: number, profile: { first_name?: st
       first_name: profile.first_name ?? null,
       username: profile.username ?? null,
       language: source.language,
-      step: "niche",
+      step: "salon_name",
       plan_status: source.plan_status,
       plan_tier: source.plan_tier,
       subscription_ends_at: source.subscription_ends_at,

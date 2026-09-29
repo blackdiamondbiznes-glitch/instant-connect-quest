@@ -17,7 +17,9 @@ const T = {
   connected: { uz: "✅ Ulandi:", ru: "✅ Подключено:", en: "✅ Connected:" },
   connectedNotAdmin: { uz: "⚠️ Bot oddiy a'zo sifatida qo'shildi. Xabarlarni o'qish va tahlil qilish uchun uni <b>admin</b> qiling.", ru: "⚠️ Бот добавлен как обычный участник. Чтобы читать и анализировать сообщения, сделайте его <b>администратором</b>.", en: "⚠️ The bot was added as a regular member. Make it an <b>admin</b> so it can read and analyze messages." },
   disconnected: { uz: "❌ Uzildi:", ru: "❌ Отключено:", en: "❌ Disconnected:" },
-  help: { uz: "/start — sozlash\n/cabinet — kabinetni ochish\n/cabinet_reset — kabinet havolasini yangilash (eski havola ishlamay qoladi)\n/salons — salonlar ro'yxati\n/newsalon — yana bir salon ochish\n\nSohani o'zgartirish: Kabinet → Sozlamalar → «Soha va joyni qayta sozlash».", ru: "/start — настройка\n/cabinet — открыть кабинет\n/cabinet_reset — обновить ссылку на кабинет (старая перестанет работать)\n/salons — список салонов\n/newsalon — открыть ещё один салон\n\nСменить сферу: Кабинет → Настройки → «Перенастроить сферу и площадку».", en: "/start — set up\n/cabinet — open cabinet\n/cabinet_reset — rotate the cabinet link (the old one stops working)\n/salons — list your salons\n/newsalon — open another salon\n\nChange your field: Cabinet → Settings → “Reconfigure niche/workspace”." },
+  help: { uz: "/start — sozlash\n/cabinet — kabinetni ochish\n/cabinet_reset — kabinet havolasini yangilash (eski havola ishlamay qoladi)\n/salons — salonlar ro'yxati\n/newsalon — yana bir salon ochish", ru: "/start — настройка\n/cabinet — открыть кабинет\n/cabinet_reset — обновить ссылку на кабинет (старая перестанет работать)\n/salons — список салонов\n/newsalon — открыть ещё один салон", en: "/start — set up\n/cabinet — open cabinet\n/cabinet_reset — rotate the cabinet link (the old one stops working)\n/salons — list your salons\n/newsalon — open another salon" },
+  askName: { uz: "Salon nomini yozing.\nMasalan: Dilnoza beauty", ru: "Напишите название салона.\nНапример: Dilnoza beauty", en: "Type the salon name.\nFor example: Dilnoza beauty" },
+  readySalon: { uz: "🎉 <b>{name}</b> tayyor.\n\nKabinetni oching. Xizmatlar bo'limida narxni yozing, so'ng «Guruhga qo'yish».", ru: "🎉 <b>{name}</b> готов.\n\nОткройте кабинет. В разделе «Услуги» укажите цену, затем «В группу».", en: "🎉 <b>{name}</b> is ready.\n\nOpen the cabinet. Add a price under Services, then post it to the group." },
   reset: { uz: "🔄 Kabinet havolasi yangilandi. Eski havola endi ishlamaydi.", ru: "🔄 Ссылка на кабинет обновлена. Старая больше не работает.", en: "🔄 Cabinet link reset. The old link no longer works." },
   redo: {
     uz: "🔧 <b>Qayta sozlash</b>\n\nO'zgaradi: soha, faoliyat joyi va yoqilgan xizmatlar.\nSaqlanadi: kontaktlar, yozuvlar, ulangan chatlar, AI tarixi, eslatmalar, VIP sozlamalari, obuna va kabinet havolasi.\n\nYangi sohada ishlatilmaydigan ro'yxatlar o'chirilmaydi — faqat yashiriladi va sohani qaytarsangiz yana ko'rinadi.",
@@ -129,7 +131,8 @@ async function handleOnboardingCallback(sb: Sb, q: any, origin: string) {
     const lang = salon.language;
     await tg("sendMessage", { chat_id: actor, text: `${t("switched", lang)} ${salon.display_name || salon.first_name || ""}`.trim() });
     if (salon.onboarded_at) return void (await tg("sendMessage", { chat_id: actor, text: "📊", reply_markup: cabinetKb(origin, salon.cabinet_token, lang) }));
-    return void (await tg("sendMessage", { chat_id: actor, text: t("chooseNiche", lang), reply_markup: nicheKb(lang, salon.niche) }));
+    await sb.from("tg_owners").update({ step: "salon_name", updated_at: new Date().toISOString() }).eq("telegram_id", salon.telegram_id);
+    return void (await tg("sendMessage", { chat_id: actor, text: t("askName", lang) }));
   }
   const { resolveActiveOwner } = await import("@/lib/account.server");
   const uid = await resolveActiveOwner(actor);
@@ -143,8 +146,16 @@ async function handleOnboardingCallback(sb: Sb, q: any, origin: string) {
   if (data.startsWith("lang:")) {
     const next = data.slice(5);
     if (!isLang(next)) return;
-    await sb.from("tg_owners").update({ language: next, step: "niche", updated_at: now }).eq("telegram_id", uid);
-    return void (await edit(t("chooseNiche", next), nicheKb(next, owner.niche)));
+    if (owner.onboarded_at && owner.niche === "beauty") {
+      await sb.from("tg_owners").update({ language: next, step: "ready", updated_at: now }).eq("telegram_id", uid);
+      return void (await edit(t("updated", next), cabinetKb(origin, owner.cabinet_token, next)));
+    }
+    if (owner.onboarded_at && owner.niche) {
+      await sb.from("tg_owners").update({ language: next, step: "niche", updated_at: now }).eq("telegram_id", uid);
+      return void (await edit(t("chooseNiche", next), nicheKb(next, owner.niche)));
+    }
+    await sb.from("tg_owners").update({ language: next, step: "salon_name", updated_at: now }).eq("telegram_id", uid);
+    return void (await edit(t("askName", next), { inline_keyboard: [] }));
   }
   if (data.startsWith("niche:")) {
     const niche = data.slice(6);
@@ -227,7 +238,7 @@ async function handlePrivate(sb: Sb, msg: any, origin: string) {
       const note = created.error === "finish_first" ? t("finishFirst", lang) : created.error === "salon_limit" ? t("salonLimit", lang) : t("help", lang);
       return void (await tg("sendMessage", { chat_id: from.id, text: note }));
     }
-    return void (await tg("sendMessage", { chat_id: from.id, text: t("newSalon", lang), reply_markup: nicheKb(lang, null) }));
+    return void (await tg("sendMessage", { chat_id: from.id, text: t("askName", lang) }));
   }
 
   const ownerId = await resolveActiveOwner(from.id);
@@ -262,6 +273,26 @@ async function handlePrivate(sb: Sb, msg: any, origin: string) {
   if (text.startsWith("/cabinet")) {
     if (!owner?.onboarded_at) return void (await tg("sendMessage", { chat_id: from.id, text: t("notReady", lang) }));
     return void (await tg("sendMessage", { chat_id: from.id, text: "📊", reply_markup: cabinetKb(origin, owner.cabinet_token, lang) }));
+  }
+  if (owner && !owner.onboarded_at && owner.step === "salon_name" && text && !text.startsWith("/")) {
+    const name = text.trim().replace(/\s+/g, " ").slice(0, 60);
+    if (!name) return void (await tg("sendMessage", { chat_id: from.id, text: t("askName", lang) }));
+    const nowName = new Date().toISOString();
+    await sb.from("tg_owners").update({
+      display_name: name,
+      niche: "beauty",
+      modules: ["bookings"],
+      workspace_type: owner.workspace_type || "public_group",
+      step: "ready",
+      onboarded_at: nowName,
+      updated_at: nowName,
+    }).eq("telegram_id", owner.telegram_id);
+    return void (await tg("sendMessage", {
+      chat_id: from.id,
+      text: t("readySalon", lang).replaceAll("{name}", escapeHtml(name)),
+      parse_mode: "HTML",
+      reply_markup: cabinetKb(origin, owner.cabinet_token, lang),
+    }));
   }
   await tg("sendMessage", { chat_id: from.id, text: t("help", lang) });
 }
