@@ -151,11 +151,13 @@ export type Database = {
           click_service_id: string | null
           close_time: string
           closed_days: string
+          closed_on: string | null
           deposit_amount: number
           open_time: string
           owner_id: number
           payme_key: string | null
           payme_merchant_id: string | null
+          reminder_hours: number
           slot_minutes: number
         }
         Insert: {
@@ -164,11 +166,13 @@ export type Database = {
           click_service_id?: string | null
           close_time?: string
           closed_days?: string
+          closed_on?: string | null
           deposit_amount?: number
           open_time?: string
           owner_id: number
           payme_key?: string | null
           payme_merchant_id?: string | null
+          reminder_hours?: number
           slot_minutes?: number
         }
         Update: {
@@ -177,11 +181,13 @@ export type Database = {
           click_service_id?: string | null
           close_time?: string
           closed_days?: string
+          closed_on?: string | null
           deposit_amount?: number
           open_time?: string
           owner_id?: number
           payme_key?: string | null
           payme_merchant_id?: string | null
+          reminder_hours?: number
           slot_minutes?: number
         }
         Relationships: [
