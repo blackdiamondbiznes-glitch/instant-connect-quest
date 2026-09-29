@@ -64,6 +64,13 @@
       "when": 1790800000000,
       "tag": "0008_salon_hours_pay_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790668357486,
+      "tag": "0009_apply_pending_beauty_booking_migrations",
+      "breakpoints": true
     }
   ]
 }
